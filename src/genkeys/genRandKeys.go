@@ -8,7 +8,7 @@ If run with the "-sig" flag, it generates signing keys instead.
 A "better" signing key means one with a higher TreeID.
 This only matters if it's high enough to make you the root of the tree.
 */
-package main
+package genkeys
 
 import (
 	"crypto/ed25519"
@@ -17,7 +17,6 @@ import (
 	"net"
 	"runtime"
 	"time"
-
 	"github.com/yggdrasil-network/yggdrasil-go/src/address"
 	"suah.dev/protect"
 )
@@ -28,7 +27,7 @@ type keySet struct {
 	count uint64
 }
 
-func main() {
+func GenerateKeys() {
 	if err := protect.Pledge("stdio"); err != nil {
 		panic(err)
 	}
