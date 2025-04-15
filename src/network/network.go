@@ -9,24 +9,24 @@ import (
 )
 
 type Message struct {
-	From    uint64
-	To      uint64
+	From    string
+	To      string
 	Payload []byte
 }
 
 type Network struct {
-	nodeID  uint64
-	peers   map[uint64]string // nodeID -> address
-	conns   map[uint64]net.Conn
+	nodeID  string
+	peers   map[string]string // nodeID -> address
+	conns   map[string]net.Conn
 	msgChan chan Message
 	mu      sync.Mutex
 }
 
-func NewNetwork(nodeID uint64) *Network {
+func NewNetwork(nodeID string) *Network {
 	return &Network{
 		nodeID:  nodeID,
-		peers:   make(map[uint64]string),
-		conns:   make(map[uint64]net.Conn),
+		peers:   make(map[string]string),
+		conns:   make(map[string]net.Conn),
 		msgChan: make(chan Message, 100),
 	}
 }
@@ -43,7 +43,7 @@ func (n *Network) GetPort() int {
 	return p
 }
 
-func (n *Network) AddPeer(nodeID uint64, addr string) {
+func (n *Network) AddPeer(nodeID string, addr string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -102,23 +102,23 @@ func (n *Network) Start(port int) error {
 	}()
 
 	// Wait for all peers to come online before connecting
-	fmt.Printf("Node %d: Waiting for peers to come online...\n", n.nodeID)
+	fmt.Printf("Node %s: Waiting for peers to come online...\n", n.nodeID)
 	for id, addr := range n.peers {
 		if id != n.nodeID {
 			for {
 				conn, err := net.Dial("tcp", addr)
 				if err == nil {
 					n.conns[id] = conn
-					fmt.Printf("Node %d: Connected to peer %d at %s\n", n.nodeID, id, addr)
+					fmt.Printf("Node %s: Connected to peer %s at %s\n", n.nodeID, id, addr)
 					go n.handleConnection(conn)
 					break
 				}
-				fmt.Printf("Node %d: Failed to connect to peer %d at %s, retrying...\n", n.nodeID, id, addr)
+				fmt.Printf("Node %s: Failed to connect to peer %s at %s, retrying...\n", n.nodeID, id, addr)
 				time.Sleep(time.Second)
 			}
 		}
 	}
-	fmt.Printf("Node %d: All peers are online!\n", n.nodeID)
+	fmt.Printf("Node %s: All peers are online!\n", n.nodeID)
 
 	return nil
 }
@@ -134,13 +134,13 @@ func (n *Network) handleConnection(conn net.Conn) {
 	}
 }
 
-func (n *Network) Send(to uint64, data []byte) error {
+func (n *Network) Send(to string, data []byte) error {
 	n.mu.Lock()
 	conn, ok := n.conns[to]
 	n.mu.Unlock()
 
 	if !ok {
-		return fmt.Errorf("no connection to node %d", to)
+		return fmt.Errorf("no connection to node %s", to)
 	}
 
 	msg := Message{

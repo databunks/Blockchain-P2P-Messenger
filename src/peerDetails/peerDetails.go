@@ -2,6 +2,7 @@ package peerDetails
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,14 +16,29 @@ type Peer struct {
 	IsAdmin   bool   `json:"is_admin"`
 }
 
-var peers []Peer
+var peers map[string][]Peer // roomID -> []Peer
 
-// AddPeer adds a new peer to the list and saves it to a file
-func AddPeer(publicKey string, ip string, isAdmin bool) error {
-	// Check for duplicate public key
-	for _, peer := range peers {
-		if peer.PublicKey == publicKey {
-			return nil // Skip adding if public key already exists
+func init() {
+	peers = make(map[string][]Peer)
+}
+
+// AddPeer adds a new peer to a specific room
+func AddPeer(publicKey string, ip string, isAdmin bool, roomID string) error {
+	fmt.Printf("Adding peer: %s, %s, %v to room %s\n", publicKey, ip, isAdmin, roomID)
+
+	// Create room directory if it doesn't exist
+	roomDir := filepath.Join(dataDir, roomID)
+	if err := os.MkdirAll(roomDir, 0755); err != nil {
+		return err
+	}
+
+	// Check for duplicate public key in the room
+	if roomPeers, exists := peers[roomID]; exists {
+		for _, peer := range roomPeers {
+			if peer.PublicKey == publicKey {
+				fmt.Println("Peer already exists in room")
+				return nil // Skip adding if public key already exists in this room
+			}
 		}
 	}
 
@@ -31,63 +47,104 @@ func AddPeer(publicKey string, ip string, isAdmin bool) error {
 		IP:        ip,
 		IsAdmin:   isAdmin,
 	}
-	peers = append(peers, peer)
-	return savePeersToFile()
+
+	// Add to memory
+	peers[roomID] = append(peers[roomID], peer)
+	fmt.Printf("Added peer to memory. Current peers: %+v\n", peers[roomID])
+
+	// Save to room-specific file
+	return savePeersToFile(roomID)
 }
 
-// savePeersToFile saves the current list of peers to a file
-func savePeersToFile() error {
+// GetPeersInRoom returns all peers in a specific room
+func GetPeersInRoom(roomID string) []Peer {
+	if roomPeers, exists := peers[roomID]; exists {
+		return roomPeers
+	}
+	return []Peer{}
+}
+
+// RemovePeerFromRoom removes a peer from a specific room
+func RemovePeerFromRoom(publicKey string, roomID string) error {
+	if roomPeers, exists := peers[roomID]; exists {
+		var newPeers []Peer
+		for _, peer := range roomPeers {
+			if peer.PublicKey != publicKey {
+				newPeers = append(newPeers, peer)
+			}
+		}
+		peers[roomID] = newPeers
+		return savePeersToFile(roomID)
+	}
+	return nil
+}
+
+// savePeersToFile saves the peers of a specific room to its file
+func savePeersToFile(roomID string) error {
+	fmt.Printf("Saving peers for room %s\n", roomID)
+	fmt.Printf("Current peers: %+v\n", peers[roomID])
+
+	roomDir := filepath.Join(dataDir, roomID)
+	if err := os.MkdirAll(roomDir, 0755); err != nil {
+		return err
+	}
+
+	filePath := filepath.Join(roomDir, "peers.json")
+	fmt.Printf("Saving to file: %s\n", filePath)
+
+	file, err := os.OpenFile(filePath,
+		os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(peers[roomID]); err != nil {
+		return err
+	}
+
+	fmt.Println("Successfully saved peers to file")
+	return nil
+}
+
+// LoadPeersFromFile loads all peers from all room files
+func LoadPeersFromFile() error {
+	// Create data directory if it doesn't exist
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return err
 	}
 
-	file, err := os.OpenFile(filepath.Join(dataDir, "peers.json"),
-		os.O_RDWR|os.O_CREATE, 0644)
+	// Read all room directories
+	rooms, err := os.ReadDir(dataDir)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
 
-	// Read existing content
-	var existingPeers []Peer
-	if err := json.NewDecoder(file).Decode(&existingPeers); err != nil && !strings.Contains(err.Error(), "EOF") {
-		return err
-	}
-
-	// Check for duplicates in existing peers
-	for _, existingPeer := range existingPeers {
-		if existingPeer.PublicKey == peers[len(peers)-1].PublicKey {
-			return nil // Skip adding if public key already exists in file
+	for _, room := range rooms {
+		if !room.IsDir() {
+			continue
 		}
-	}
 
-	// Combine existing and new peers
-	allPeers := append(existingPeers, peers[len(peers)-1])
-
-	// Clear the file
-	if err := file.Truncate(0); err != nil {
-		return err
-	}
-	if _, err := file.Seek(0, 0); err != nil {
-		return err
-	}
-
-	// Write all peers back with proper formatting
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	return encoder.Encode(allPeers)
-}
-
-// LoadPeersFromFile loads the list of peers from a file
-func LoadPeersFromFile() error {
-	file, err := os.Open(filepath.Join(dataDir, "peers.json"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil // No peers file exists yet
+		roomID := room.Name()
+		file, err := os.Open(filepath.Join(dataDir, roomID, "peers.json"))
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
 		}
-		return err
-	}
-	defer file.Close()
+		defer file.Close()
 
-	return json.NewDecoder(file).Decode(&peers)
+		var roomPeers []Peer
+		if err := json.NewDecoder(file).Decode(&roomPeers); err != nil {
+			if !strings.Contains(err.Error(), "EOF") {
+				return err
+			}
+		}
+		peers[roomID] = roomPeers
+	}
+
+	return nil
 }

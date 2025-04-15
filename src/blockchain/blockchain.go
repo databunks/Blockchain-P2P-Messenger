@@ -21,7 +21,11 @@ type Block struct {
 }
 
 // Blockchain is a series of validated Blocks
-var Blockchain []Block
+var blockchains map[string][]Block // roomID -> []Block
+
+func init() {
+	blockchains = make(map[string][]Block)
+}
 
 // CalculateHash is a simple SHA256 hashing function
 func CalculateHash(block Block) string {
@@ -44,11 +48,6 @@ func GenerateBlock(oldBlock Block, Data string) (Block, error) {
 	newBlock.PrevHash = oldBlock.Hash
 	newBlock.Hash = CalculateHash(newBlock)
 
-	// Save the updated blockchain to file
-	if err := SaveBlockchainToFile(); err != nil {
-		return Block{}, err
-	}
-
 	return newBlock, nil
 }
 
@@ -70,21 +69,22 @@ func IsBlockValid(newBlock, oldBlock Block) bool {
 }
 
 // ReplaceChain replaces the current chain with a new one if the new one is longer
-func ReplaceChain(newBlocks []Block) error {
-	if len(newBlocks) > len(Blockchain) {
-		Blockchain = newBlocks
-		return SaveBlockchainToFile()
+func ReplaceChain(newBlocks []Block, roomID string) error {
+	if len(newBlocks) > len(blockchains[roomID]) {
+		blockchains[roomID] = newBlocks
+		return SaveBlockchainToFile(roomID)
 	}
 	return nil
 }
 
 // SaveBlockchainToFile saves the current blockchain to a file
-func SaveBlockchainToFile() error {
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+func SaveBlockchainToFile(roomID string) error {
+	roomDir := filepath.Join(dataDir, roomID)
+	if err := os.MkdirAll(roomDir, 0755); err != nil {
 		return err
 	}
 
-	file, err := os.OpenFile(filepath.Join(dataDir, "blockchain.json"),
+	file, err := os.OpenFile(filepath.Join(roomDir, "blockchain.json"),
 		os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
@@ -93,7 +93,7 @@ func SaveBlockchainToFile() error {
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(Blockchain)
+	return encoder.Encode(blockchains[roomID])
 }
 
 // GenerateGenesisBlock creates the first block in the blockchain
@@ -109,34 +109,52 @@ func GenerateGenesisBlock() Block {
 }
 
 // LoadBlockchainFromFile loads the blockchain from a file
-func LoadBlockchainFromFile() error {
-	file, err := os.Open(filepath.Join(dataDir, "blockchain.json"))
+func LoadBlockchainFromFile(roomID string) error {
+	roomDir := filepath.Join(dataDir, roomID)
+	if err := os.MkdirAll(roomDir, 0755); err != nil {
+		return err
+	}
+
+	file, err := os.Open(filepath.Join(roomDir, "blockchain.json"))
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Initialize with genesis block if file doesn't exist
 			genesisBlock := GenerateGenesisBlock()
-			Blockchain = []Block{genesisBlock}
-			return SaveBlockchainToFile()
+			blockchains[roomID] = []Block{genesisBlock}
+			return SaveBlockchainToFile(roomID)
 		}
 		return err
 	}
 	defer file.Close()
 
-	return json.NewDecoder(file).Decode(&Blockchain)
+	var blocks []Block
+	if err := json.NewDecoder(file).Decode(&blocks); err != nil {
+		return err
+	}
+	blockchains[roomID] = blocks
+	return nil
 }
 
 // AddBlock adds a new block with the given data to the blockchain
-func AddBlock(data string) error {
-	if err := LoadBlockchainFromFile(); err != nil {
+func AddBlock(data string, roomID string) error {
+	if err := LoadBlockchainFromFile(roomID); err != nil {
 		return err
 	}
 
-	lastBlock := Blockchain[len(Blockchain)-1]
+	lastBlock := blockchains[roomID][len(blockchains[roomID])-1]
 	newBlock, err := GenerateBlock(lastBlock, data)
 	if err != nil {
 		return err
 	}
 
-	Blockchain = append(Blockchain, newBlock)
-	return SaveBlockchainToFile()
+	blockchains[roomID] = append(blockchains[roomID], newBlock)
+	return SaveBlockchainToFile(roomID)
+}
+
+// GetBlockchain returns the blockchain for a specific room
+func GetBlockchain(roomID string) []Block {
+	if chain, exists := blockchains[roomID]; exists {
+		return chain
+	}
+	return []Block{}
 }

@@ -1,7 +1,9 @@
 package main
 
 import (
-	//"blockchain-p2p-messenger/src/genkeys"
+	// "blockchain-p2p-messenger/src/room"
+	// "blockchain-p2p-messenger/src/genkeys"
+	"blockchain-p2p-messenger/src/blockchain"
 	"blockchain-p2p-messenger/src/consensus"
 	"blockchain-p2p-messenger/src/peerDetails"
 	"flag"
@@ -12,10 +14,18 @@ import (
 )
 
 func main() {
+
+	// room, err := room.CreateRoom("test")
+	// if err != nil {
+	// 	fmt.Printf("Error creating room: %v\n", err)
+	// 	return
+	// }
+	// fmt.Printf("Created room: %+v\n", room)
+
 	// Parse command line arguments
 	nodeID := flag.Uint64("id", 1, "Node ID")
 	port := flag.Int("port", 8001, "Port number")
-	peers := flag.String("peers", "1,2,3,4", "Comma-separated list of node IDs")
+	peers := flag.String("peers", "1,2,3", "Comma-separated list of node IDs")
 	flag.Parse()
 
 	// Parse peer IDs
@@ -29,10 +39,10 @@ func main() {
 	}
 
 	// Initialize peer details (for demo purposes)
-	peerDetails.AddPeer("0000001b34f2c2b897d0354eee6f9c898082fa4a42792b8e45768448fb8eb62a", "21b:4cb0:d3d4:7682:fcab:1119:637:67f7", true)
+	peerDetails.AddPeer("0000001b34f2c2b897d0354eee6f9c898082fa4a42792b8e45768448fb8eb62a", "21b:4cb0:d3d4:7682:fcab:1119:637:67f7", true, "1")
 
 	// Initialize consensus
-	if err := consensus.InitConsensus(*nodeID, peerIDs, *port); err != nil {
+	if err := consensus.InitConsensus(fmt.Sprintf("%d", *nodeID), *port); err != nil {
 		panic(err)
 	}
 
@@ -45,6 +55,8 @@ func main() {
 
 	// Add a transaction
 	consensus.AddTransaction(fmt.Sprintf("Hello from node %d", *nodeID))
+
+	blockchain.AddBlock(fmt.Sprintf("Hello from node %d", *nodeID), "1")
 
 	// Wait for consensus
 	time.Sleep(5 * time.Second)
