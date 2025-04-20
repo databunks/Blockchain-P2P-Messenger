@@ -1,74 +1,27 @@
 package main
 
-import (
-	// "blockchain-p2p-messenger/src/room"
-	// "blockchain-p2p-messenger/src/genkeys"
-	"blockchain-p2p-messenger/src/blockchain"
-	"blockchain-p2p-messenger/src/consensus"
-	"blockchain-p2p-messenger/src/peerDetails"
-	"flag"
-	"fmt"
-	"strconv"
-	"strings"
-	"time"
-)
+import "blockchain-p2p-messenger/src/network"
+
+// "blockchain-p2p-messenger/src/consensus"
+// "blockchain-p2p-messenger/src/peerDetails"
+// "crypto/ed25519"
+// "fmt"
 
 func main() {
+	// network.StartYggdrasilServer()
+	// publicKey := "123abc456def7890"                // mock public key
+	// publicKey2 := "joebiden"
+	// publicKey3 := "joebiden2"
+	// ip := "219:84b6:648e:9ca5:e124:49ed:42d2:e6a3" // fake IPv6 address
+	// isAdmin := false
+	// roomID := "room-xyz-987" // mock room ID
 
-	// room, err := room.CreateRoom("test")
-	// if err != nil {
-	// 	fmt.Printf("Error creating room: %v\n", err)
-	// 	return
-	// }
-	// fmt.Printf("Created room: %+v\n", room)
+	// peerDetails.AddPeer(publicKey, ip, isAdmin, roomID)
+	// peerDetails.AddPeer(publicKey2, ip, isAdmin, roomID)
+	// peerDetails.AddPeer(publicKey3, ip, isAdmin, roomID)
 
-	// Parse command line arguments
-	nodeID := flag.Uint64("id", 1, "Node ID")
-	port := flag.Int("port", 8001, "Port number")
-	peers := flag.String("peers", "1,2,3", "Comma-separated list of node IDs")
-	flag.Parse()
+	// peerDetails.RemovePeer(publicKey, roomID)
+	//network.GetYggdrasilPeers()
 
-	// Parse peer IDs
-	peerIDs := make([]uint64, 0)
-	for _, idStr := range strings.Split(*peers, ",") {
-		id, err := strconv.ParseUint(idStr, 10, 64)
-		if err != nil {
-			panic(fmt.Sprintf("Invalid peer ID: %s", idStr))
-		}
-		peerIDs = append(peerIDs, id)
-	}
-
-	// Initialize peer details (for demo purposes)
-	peerDetails.AddPeer("0000001b34f2c2b897d0354eee6f9c898082fa4a42792b8e45768448fb8eb62a", "21b:4cb0:d3d4:7682:fcab:1119:637:67f7", true, "1")
-
-	// Initialize consensus
-	if err := consensus.InitConsensus(fmt.Sprintf("%d", *nodeID), *port); err != nil {
-		panic(err)
-	}
-
-	fmt.Println("Starting consensus")
-
-	// Start the consensus engine
-	consensus.StartConsensus()
-
-	fmt.Println("Consensus started")
-
-	// Add a transaction
-	consensus.AddTransaction(fmt.Sprintf("Hello from node %d", *nodeID))
-
-	blockchain.AddBlock(fmt.Sprintf("Hello from node %d", *nodeID), "1")
-
-	// Wait for consensus
-	time.Sleep(5 * time.Second)
-
-	// Get and print outputs
-	outputs := consensus.GetOutputs()
-	for epoch, txs := range outputs {
-		for _, tx := range txs {
-			fmt.Printf("Node %d - Epoch: %d, Data: %s\n", *nodeID, epoch, tx.Data)
-		}
-	}
-
-	// Keep the program running
-	select {}
+	network.InitializeNetwork("room-xyz-987")
 }

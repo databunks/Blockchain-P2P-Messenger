@@ -25,3 +25,4 @@ func DeriveIPAddressFromPublicKey(pubKeyHex string) (string, error) {
 
 	return ip, nil
 }
+

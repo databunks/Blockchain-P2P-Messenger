@@ -153,6 +153,7 @@ func AddBlock(data string, roomID string) error {
 
 // GetBlockchain returns the blockchain for a specific room
 func GetBlockchain(roomID string) []Block {
+	LoadBlockchainFromFile(roomID)
 	if chain, exists := blockchains[roomID]; exists {
 		return chain
 	}

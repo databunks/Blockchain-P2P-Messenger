@@ -1,14 +1,11 @@
 package peerDetails
 
 import (
+	"blockchain-p2p-messenger/src/blockchain"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 )
-
-const dataDir = "data"
 
 type Peer struct {
 	PublicKey string `json:"public_key"`
@@ -26,125 +23,99 @@ func init() {
 func AddPeer(publicKey string, ip string, isAdmin bool, roomID string) error {
 	fmt.Printf("Adding peer: %s, %s, %v to room %s\n", publicKey, ip, isAdmin, roomID)
 
-	// Create room directory if it doesn't exist
-	roomDir := filepath.Join(dataDir, roomID)
-	if err := os.MkdirAll(roomDir, 0755); err != nil {
-		return err
-	}
-
-	// Check for duplicate public key in the room
-	if roomPeers, exists := peers[roomID]; exists {
-		for _, peer := range roomPeers {
-			if peer.PublicKey == publicKey {
-				fmt.Println("Peer already exists in room")
-				return nil // Skip adding if public key already exists in this room
-			}
-		}
-	}
-
 	peer := Peer{
 		PublicKey: publicKey,
 		IP:        ip,
 		IsAdmin:   isAdmin,
 	}
 
+	// Get Previous Peers
+	GetPeersInRoom(roomID)
+
 	// Add to memory
 	peers[roomID] = append(peers[roomID], peer)
 	fmt.Printf("Added peer to memory. Current peers: %+v\n", peers[roomID])
 
-	// Save to room-specific file
-	return savePeersToFile(roomID)
+	// Save to blockchain
+	peerJson, err := json.Marshal(peers[roomID])
+	if err != nil {
+		return fmt.Errorf("failed to marshal peer list: %v", err)
+	}
+
+	blockchain.AddBlock(fmt.Sprintf("PEER_ADDED\n%s", peerJson), roomID)
+
+		
+	return nil
+	// return savePeersToFile(roomID)
 }
 
-// GetPeersInRoom returns all peers in a specific room
+// GetPeersInRoom loads the latest peer list for a specific room from the blockchain
 func GetPeersInRoom(roomID string) []Peer {
-	if roomPeers, exists := peers[roomID]; exists {
-		return roomPeers
-	}
-	return []Peer{}
-}
+	current_blockchain := blockchain.GetBlockchain(roomID)
 
-// RemovePeerFromRoom removes a peer from a specific room
-func RemovePeerFromRoom(publicKey string, roomID string) error {
-	if roomPeers, exists := peers[roomID]; exists {
-		var newPeers []Peer
-		for _, peer := range roomPeers {
-			if peer.PublicKey != publicKey {
-				newPeers = append(newPeers, peer)
+	for i := len(current_blockchain) - 1; i >= 0; i-- {
+		block := current_blockchain[i]
+
+		if strings.HasPrefix(block.Data, "PEER_") {
+			var roomPeers []Peer
+			data := strings.SplitN(block.Data, "\n", 2)
+			if len(data) < 2 {
+				break
 			}
+
+			if err := json.Unmarshal([]byte(data[1]), &roomPeers); err != nil {
+				fmt.Println("Failed to unmarshal peer list:", err)
+				break
+			}
+
+			// Update in-memory cache and return the peer list
+			peers[roomID] = roomPeers
+			return roomPeers
 		}
-		peers[roomID] = newPeers
-		return savePeersToFile(roomID)
 	}
-	return nil
+
+	// No peers found in blockchain for this room
+	peers[roomID] = []Peer{}
+	return peers[roomID]
 }
 
-// savePeersToFile saves the peers of a specific room to its file
-func savePeersToFile(roomID string) error {
-	fmt.Printf("Saving peers for room %s\n", roomID)
-	fmt.Printf("Current peers: %+v\n", peers[roomID])
 
-	roomDir := filepath.Join(dataDir, roomID)
-	if err := os.MkdirAll(roomDir, 0755); err != nil {
-		return err
+// RemovePeer removes a peer by public key from a specific room
+func RemovePeer(publicKey string, roomID string) error {
+	fmt.Printf("Removing peer with public key: %s from room: %s\n", publicKey, roomID)
+
+	// Load latest peers from blockchain
+	currentPeers := GetPeersInRoom(roomID)
+
+	// Filter out the peer we want to remove
+	newPeerList := []Peer{}
+	found := false
+	for _, peer := range currentPeers {
+		if peer.PublicKey != publicKey {
+			newPeerList = append(newPeerList, peer)
+		} else {
+			found = true
+		}
 	}
 
-	filePath := filepath.Join(roomDir, "peers.json")
-	fmt.Printf("Saving to file: %s\n", filePath)
+	if !found {
+		return fmt.Errorf("peer with public key %s not found in room %s", publicKey, roomID)
+	}
 
-	file, err := os.OpenFile(filePath,
-		os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	// Update memory
+	peers[roomID] = newPeerList
+	fmt.Printf("Updated peer list after removal: %+v\n", newPeerList)
+
+	// Save new peer list to blockchain
+	peerJson, err := json.Marshal(newPeerList)
 	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(peers[roomID]); err != nil {
-		return err
+		return fmt.Errorf("failed to marshal peer list: %v", err)
 	}
 
-	fmt.Println("Successfully saved peers to file")
+	blockchain.AddBlock(fmt.Sprintf("PEER_REMOVED\n%s", peerJson), roomID)
+
 	return nil
 }
 
-// LoadPeersFromFile loads all peers from all room files
-func LoadPeersFromFile() error {
-	// Create data directory if it doesn't exist
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return err
-	}
 
-	// Read all room directories
-	rooms, err := os.ReadDir(dataDir)
-	if err != nil {
-		return err
-	}
 
-	for _, room := range rooms {
-		if !room.IsDir() {
-			continue
-		}
-
-		roomID := room.Name()
-		file, err := os.Open(filepath.Join(dataDir, roomID, "peers.json"))
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return err
-		}
-		defer file.Close()
-
-		var roomPeers []Peer
-		if err := json.NewDecoder(file).Decode(&roomPeers); err != nil {
-			if !strings.Contains(err.Error(), "EOF") {
-				return err
-			}
-		}
-		peers[roomID] = roomPeers
-	}
-
-	return nil
-}
