@@ -1,4 +1,4 @@
-package dummyconsensus
+package main
 
 import (
 	"encoding/binary"
@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"sync"
 	"time"
-
 	"github.com/anthdm/hbbft"
 )
 
@@ -29,7 +28,7 @@ var (
 	relayCh  = make(chan *Transaction, 1024*1024)
 )
 
-func InitConsensus() {
+func main() {
 	var (
 		nodes = makeNetwork(lenNodes)
 	)

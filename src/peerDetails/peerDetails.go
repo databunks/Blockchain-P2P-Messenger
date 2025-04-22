@@ -2,15 +2,17 @@ package peerDetails
 
 import (
 	"blockchain-p2p-messenger/src/blockchain"
+	"blockchain-p2p-messenger/src/derivationFunctions"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
 type Peer struct {
-	PublicKey string `json:"public_key"`
+	PublicKey string `json:"publickey"`
 	IP        string `json:"ip"`
-	IsAdmin   bool   `json:"is_admin"`
+	IsAdmin   bool   `json:"isadmin"`
 }
 
 var peers map[string][]Peer // roomID -> []Peer
@@ -30,19 +32,27 @@ func AddPeer(publicKey string, ip string, isAdmin bool, roomID string) error {
 	}
 
 	// Get Previous Peers
-	GetPeersInRoom(roomID)
+	peers[roomID] = GetPeersInRoom(roomID)
 
 	// Add to memory
 	peers[roomID] = append(peers[roomID], peer)
 	fmt.Printf("Added peer to memory. Current peers: %+v\n", peers[roomID])
 
-	// Save to blockchain
-	peerJson, err := json.Marshal(peers[roomID])
-	if err != nil {
-		return fmt.Errorf("failed to marshal peer list: %v", err)
+	peerList := "["
+	for i := 0; i < len(peers[roomID]); i++{
+		peerList += "{"
+		peerList += peers[roomID][i].PublicKey
+		peerList += " " + peers[roomID][i].IP
+		peerList += " " + fmt.Sprintf("%v", peers[roomID][i].IsAdmin)
+		peerList += "}"
+		if (i != len(peers[roomID]) - 1){
+			peerList += ", "
+		}
 	}
 
-	blockchain.AddBlock(fmt.Sprintf("PEER_ADDED\n%s", peerJson), roomID)
+	peerList += "]"
+
+	blockchain.AddBlock(fmt.Sprintf("PEER_ADDED$%s", peerList), roomID)
 
 		
 	return nil
@@ -58,18 +68,35 @@ func GetPeersInRoom(roomID string) []Peer {
 
 		if strings.HasPrefix(block.Data, "PEER_") {
 			var roomPeers []Peer
-			data := strings.SplitN(block.Data, "\n", 2)
-			if len(data) < 2 {
-				break
-			}
 
-			if err := json.Unmarshal([]byte(data[1]), &roomPeers); err != nil {
-				fmt.Println("Failed to unmarshal peer list:", err)
-				break
+			dataArray := strings.SplitN(block.Data, "$", 2)
+			dataArray = strings.SplitN(dataArray[1], "{", -1)
+
+			for i := 1; i < len(dataArray); i++{
+
+				var currentElement = strings.SplitN(dataArray[i], "}", 2)[0]
+				peers := strings.SplitN(currentElement, " ", 3)
+
+				isAdmin, err := strconv.ParseBool(peers[2])
+				ipaddr, err_2 := derivationFunctions.DeriveIPAddressFromPublicKey(peers[0])
+				
+				roomPeers = append(roomPeers, Peer{PublicKey: peers[0], IP: ipaddr, IsAdmin: isAdmin})
+
+
+				if err != nil {
+					fmt.Println("Error:", err, err_2)
+				}
 			}
+			
+
+			// if err := json.Unmarshal([]byte(data[1]), &roomPeers); err != nil {
+				
+			// 	fmt.Println("Failed to unmarshal peer list:", err)
+			// 	break
+			// }
 
 			// Update in-memory cache and return the peer list
-			peers[roomID] = roomPeers
+			// peers[roomID] = roomPeers
 			return roomPeers
 		}
 	}

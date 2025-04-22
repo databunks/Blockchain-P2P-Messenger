@@ -4,7 +4,7 @@ import (
 	"blockchain-p2p-messenger/src/consensus"
 	"blockchain-p2p-messenger/src/peerDetails"
 	"crypto/ed25519"
-	"crypto/rand"
+
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -21,8 +21,9 @@ import (
 type Message struct {
 	PublicKey      string `json:"public_key"`
 	Message        string `json:"message"`
-	DigitalSignature string `json:"digital_signature"`
 	RoomID string `json:"room_id"`
+	DigitalSignature string `json:"digital_signature"`
+	timestamp uint64 `json:"timestamp"`
 }
 
 type Peer struct {
@@ -57,34 +58,41 @@ type YggdrasilNodeInfo struct {
 var HB *hbbft.HoneyBadger
 var node *consensus.Node
 
+
+func GetConsensusState(){
+
+}
+
 func InitializeNetwork(roomID string) error{
 
+	
 	peers := peerDetails.GetPeersInRoom(roomID)
 
+	
 	for i := 0; i < 10; i++{
 
-		peers = peerDetails.GetPeersInRoom(roomID)
+		
 		peersOnline, _, _ := GetYggdrasilPeers()
+		peers = peerDetails.GetPeersInRoom(roomID)
 
 		peerSet := make(map[string]struct{})
-		for _, p := range peers {
-			peerSet[p.PublicKey] = struct{}{}
+		for _, p := range peersOnline {
+			peerSet[p.Key] = struct{}{}
 		}
 
 		lenPeers := 0
-		for _, p := range peersOnline {
-			if _, ok := peerSet[p.Key]; ok {
-				fmt.Println(p.Key, "is online")
+		for _, p := range peers {
+			if _, ok := peerSet[p.PublicKey]; ok {
+				fmt.Println(p.PublicKey, "is online")
 				lenPeers++
 			} else {
-				fmt.Println(p.Key, "is offline")
+				fmt.Println(p.PublicKey, "is offline")
 			}
 		}
-
-		if lenPeers < 4 {
+		if lenPeers < 3 {
 			fmt.Printf("Retrying.... (attempt %d)\n", i)
 			time.Sleep(5 * time.Second)
-		} else if (lenPeers == 4) {
+		} else if (lenPeers >= 3) {
 			fmt.Printf("Initializing consensus with Yggdrasil peers: %v\n", peers)
 			break
 		} else if (i == 9){
@@ -92,13 +100,8 @@ func InitializeNetwork(roomID string) error{
 		}
 	}
 
-
-	
-
-
 	// Link peers to consensus (public key is passed into node id)
 	// (New node represents our local server)
-	transport := make([]hbbft.Transport, 1)
 	var peerIDs []uint64 
 
 	// Translating public keys to uint34 IDs
@@ -106,11 +109,29 @@ func InitializeNetwork(roomID string) error{
 		peerIDs = append(peerIDs, consensus.PublicKeyToID(peer.PublicKey))
 	}
 
+	nodes := consensus.MakeNetwork(len(peers), peerIDs)
+	messages := make(chan consensus.Message, 1024*1024)
 
-	node = consensus.NewNode(consensus.PublicKeyToID(GetYggdrasilNodeInfo().Key), transport[0], peerIDs)
-	HB = node.HB
+	// Starting consensus 
+	for _, node := range nodes {
+		//go node.run()
+		go func(node *consensus.Node) {
+			if err := node.HB.Start(); err != nil {
+				log.Fatal(err)
+			}
+			for _, msg := range node.HB.Messages() {
+				messages <- consensus.Message{node.ID, msg}
+			}
+		}(node)
+	}
+
+	// Synchronize if behind
+
+
+	ListenOnPort(3000)
+
+	sendMessage("Joe biden", "room-xyz-987", 3000)
 	
-	HB.Start()
 
 	return nil
 }
@@ -139,9 +160,8 @@ func GetYggdrasilPeers() ([]Peer, []Peer, error) {
 		}
 	}
 
-
-	// log.Printf("Inbound Peers: %v", inPeers)
-	// log.Printf("Outbound Peers: %v", outPeers)
+	log.Printf("Inbound Peers: %v", inPeers)
+	log.Printf("Outbound Peers: %v", outPeers)
 
 	return inPeers, outPeers, err
 }
@@ -227,61 +247,146 @@ func ListenOnPort(port int) {
 
 
 // SignMessage signs a message with the private key and returns the signature.
-func SignMessage(message []byte) ([]byte, error) {
+// func SignMessage(message []byte) ([]byte, error) {
 
+// 	// Load environment variables from .env file
+// 	err := godotenv.Load("../keydetails.env")
+// 	if err != nil {
+// 		log.Fatalf("Error loading .env file: %v", err)
+// 	}
+
+	
+// 	// Access a specific environment variable
+// 	hexPrivateKey := os.Getenv("PRIVATE_KEY")
+	
+// 	// Convert the hex string to bytes
+// 	privateKeyBytes, err := hex.DecodeString(hexPrivateKey)
+// 	if err != nil {
+// 		log.Fatalf("Failed to decode hex string: %v", err)
+// 	}
+	
+
+// 	hexPrivateKey = ""
+
+// 	// Convert the byte slice to an ed25519.PrivateKey
+// 	if len(privateKeyBytes) != ed25519.PrivateKeySize {
+// 		log.Fatalf("Invalid private key size: expected %d bytes, got %d bytes", ed25519.PrivateKeySize, len(privateKeyBytes))
+// 	}
+	
+
+// 	privateKey := ed25519.PrivateKey(privateKeyBytes)
+
+	
+// 	signature := privateKey.Sign(message)
+
+	
+// 	return signature, nil
+// }
+
+
+func SignMessage(message []byte) ([]byte) {
 	// Load environment variables from .env file
-	err := godotenv.Load()
+	err := godotenv.Load("../keydetails.env")
 	if err != nil {
-		log.Fatalf("Error loading .env file: %v", err)
+		log.Fatal("Error loading .env file")
 	}
 
-	// Access a specific environment variable
-	hexPrivateKey := os.Getenv("PRIVATE_KEY")
+	// Get the ED25519 private key from the environment variable
+	privateKeyHex := os.Getenv("PRIVATE_KEY")
+	if privateKeyHex == "" {
+		log.Fatal("ED25519_PRIVATE_KEY is not set in .env file")
+	}
 
 	// Convert the hex string to bytes
-	privateKeyBytes, err := hex.DecodeString(hexPrivateKey)
+	privateKeyBytes, err := hex.DecodeString(privateKeyHex)
 	if err != nil {
-		log.Fatalf("Failed to decode hex string: %v", err)
+		log.Fatal("Failed to decode private key:", err)
 	}
 
-	hexPrivateKey = ""
-
-	// Convert the byte slice to an ed25519.PrivateKey
+	// Ensure the private key is the correct length (32 bytes for ED25519)
 	if len(privateKeyBytes) != ed25519.PrivateKeySize {
-		log.Fatalf("Invalid private key size: expected %d bytes, got %d bytes", ed25519.PrivateKeySize, len(privateKeyBytes))
+		log.Fatal("Invalid private key size, expected 32 bytes")
 	}
 
-	privateKey := ed25519.PrivateKey(privateKeyBytes)
+	// Generate the public key from the private key
+	privateKey := ed25519.NewKeyFromSeed(privateKeyBytes[:ed25519.SeedSize])
+	publicKey := privateKey.Public().(ed25519.PublicKey)
 
-	// Sign the message using the private key
-	signature, err := privateKey.Sign(rand.Reader, message, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign message: %v", err)
+	// Print the public key (optional)
+	fmt.Printf("Public Key: %x\n", publicKey)
+
+	// Sign a message using the private key
+	// message := []byte("Hello, this is a test message.")
+	signature := ed25519.Sign(privateKey, message)	
+
+	// Print the signature
+	fmt.Printf("Message: %s\n", message)
+	fmt.Printf("Signature: %x\n", signature)
+
+	// Optionally, verify the signature
+	valid := ed25519.Verify(publicKey, message, signature)
+	if valid {
+		fmt.Println("Signature is valid.")
+	} else {
+		fmt.Println("Signature is invalid.")
 	}
-	return signature, nil
+	return signature
 }
 
 // sendMessage creates a Message struct, signs it, and returns the message with the digital signature
-func sendMessage(publicKey string, messageContent string, roomID string) (Message, error) {
-	// Create the message struct
-	message := Message{
-		PublicKey: publicKey,
-		Message:   messageContent,
-		RoomID:    roomID, 
+func sendMessage(messageContent string, roomID string, port uint64) (error) {
+	
+
+	
+
+	// Get a list of everyones ip address in the room
+	peers := peerDetails.GetPeersInRoom(roomID)
+	
+	for _, peer := range(peers){
+		// Create the message struct
+		message := Message{
+			PublicKey: peer.PublicKey,
+			Message:   messageContent,
+			RoomID:    roomID,
+			timestamp: 0, 
+		}
+
+		// Sign the message using the SignMessage function
+		signature := SignMessage([]byte(messageContent))
+		// if err != nil {
+		// 	return fmt.Errorf("failed to sign message: %v", err)
+		// }
+
+		// Add the signature to the message
+		message.DigitalSignature = hex.EncodeToString(signature)
+
+		// Establish a TCP connection with all of them
+		conn, err := net.Dial("tcp", fmt.Sprint("%s:%s", peer.IP, string(port)))
+		if err != nil {
+			log.Fatal("Error connecting to server:", err)
+			os.Exit(1)
+		}
+		defer conn.Close() // Make sure the connection is closed when done
+
+		// Convert the Message struct to a JSON byte slice
+		msgBytes, err := json.Marshal(message)
+		if err != nil {
+			log.Fatal("Error converting struct to JSON:", err)
+		}
+
+		// Send the message
+		_, err = conn.Write([]byte(msgBytes))
+		if err != nil {
+			log.Fatal("Error sending message:", err)
+		}
+
+		fmt.Println("Message sent to", peer.IP)
+
 	}
 
-	// Sign the message using the SignMessage function
-	signature, err := SignMessage([]byte(messageContent))
-	if err != nil {
-		return Message{}, fmt.Errorf("failed to sign message: %v", err)
-	}
-
-	// Add the signature to the message
-	message.DigitalSignature = hex.EncodeToString(signature)
-
-	// Return the message with the signature
-	return message, nil
+	return nil
 }
+
 
 
 func StartYggdrasilServer() error {

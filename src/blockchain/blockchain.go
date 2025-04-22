@@ -135,6 +135,8 @@ func LoadBlockchainFromFile(roomID string) error {
 	return nil
 }
 
+
+
 // AddBlock adds a new block with the given data to the blockchain
 func AddBlock(data string, roomID string) error {
 	if err := LoadBlockchainFromFile(roomID); err != nil {

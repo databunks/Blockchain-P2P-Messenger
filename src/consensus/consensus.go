@@ -6,64 +6,41 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
 	"log"
-
 	"sync"
 	"time"
-
 	"github.com/anthdm/hbbft"
-	"github.com/hashicorp/raft"
 )
 
+const (
+	batchSize = 500
+	numCores  = 4
+)
 
+type Message struct {
+	From    uint64
+	Payload hbbft.MessageTuple
+}
+
+var (
+	txDelay  = (3 * time.Millisecond) / numCores
+	messages = make(chan Message, 1024*1024)
+	relayCh  = make(chan *Transaction, 1024*1024)
+)
 
 func (t Transaction) Hash() []byte {
 	return []byte(t.Data)
 }
 
-var (
-	HB       *hbbft.HoneyBadger
-	raftNode *raft.Raft
-	// net      *network.Network
-)
-
-// type NetworkTransport struct {
-// 	net *network.Network
-// }
-
-// func (t *NetworkTransport) Recv() <-chan []byte {
-// 	ch := make(chan []byte, 100)
-// 	go func() {
-// 		fmt.Println("Starting message receiver")
-// 		for msg := range t.net.Receive() {
-// 			// Convert string ID back to uint64 for consensus
-// 			from, err := strconv.ParseUint(msg.From, 10, 64)
-// 			if err != nil {
-// 				fmt.Printf("Error parsing node ID: %v\n", err)
-// 				continue
-// 			}
-// 			fmt.Printf("Received message from node %d: %v\n", from, msg.Payload)
-// 			ch <- msg.Payload
-// 		}
-// 	}()
-// 	return ch
-// }
-
-// func (t* NetworkTransport) Recv() <-chan []byte{
-
-// }
-
-
-var batchSize = 1
-
-// type Transaction struct {
-// 	Nonce uint64
-// }
 
 type Transaction struct {
 	Data string
 }
+
+func newTransaction(data string) *Transaction {
+	return &Transaction{Data: data}
+}
+
 
 type Node struct {
 	ID          uint64
@@ -75,6 +52,8 @@ type Node struct {
 	TotalCommit int
 	Start       time.Time
 }
+
+
 
 
 // PublicKeyToID converts a hex-encoded ed25519 public key string into a deterministic uint64 ID.
@@ -116,6 +95,35 @@ func NewNode(id uint64, tr hbbft.Transport, nodes []uint64) *Node {
 	}
 }
 
+func MakeNetwork(n int, nodeIDs []uint64) []*Node {
+	transports := make([]hbbft.Transport, n)
+	nodes := make([]*Node, n)
+	for i := 0; i < n; i++ {
+		transports[i] = hbbft.NewLocalTransport(uint64(i))
+		nodes[i] = NewNode(uint64(i), transports[i], nodeIDs)
+	}
+	connectTransports(transports)
+	return nodes
+}
+
+func connectTransports(tt []hbbft.Transport) {
+	for i := 0; i < len(tt); i++ {
+		for ii := 0; ii < len(tt); ii++ {
+			if ii == i {
+				continue
+			}
+			tt[i].Connect(tt[ii].Addr(), tt[ii])
+		}
+	}
+}
+
+func (n *Node) ReceiveTransaction(strtx string){
+
+	// tx will just be a message for now but later we add more
+	n.HB.AddTransaction(newTransaction(strtx))
+
+}
+
 // Hash implements the hbbft.Transaction interface.
 // func (t *Transaction) Hash() []byte {
 // 	buf := make([]byte, 8)
@@ -124,134 +132,181 @@ func NewNode(id uint64, tr hbbft.Transport, nodes []uint64) *Node {
 // }
 
 
-func InitConsensus(roomID string) (error, *hbbft.HoneyBadger) {
+// func InitConsensus(roomID string) (error, *hbbft.HoneyBadger) {
 
 	
 	
 	
 
 
-	// Any new request is processed as a transaction
+// 	// Any new request is processed as a transaction
 
-	//
+// 	//
 	
 
-	// Add Yggdrasil peers
+// 	// Add Yggdrasil peers
 
-	// transport := &NetworkTransport{net: net}
+// 	// transport := &NetworkTransport{net: net}
 
-	// Use Raft for small networks (2-3 nodes)
-	// if len(peers) < 4 {
-	// 	fmt.Println("Using Raft consensus for small network")
-	// 	// Initialize Raft configuration
-	// 	config := raft.DefaultConfig()
-	// 	config.LocalID = raft.ServerID("1") // Use "1" as our ID
+// 	// Use Raft for small networks (2-3 nodes)
+// 	// if len(peers) < 4 {
+// 	// 	fmt.Println("Using Raft consensus for small network")
+// 	// 	// Initialize Raft configuration
+// 	// 	config := raft.DefaultConfig()
+// 	// 	config.LocalID = raft.ServerID("1") // Use "1" as our ID
 
-	// 	// Create Raft transport
-	// 	raftTransport := &RaftTransport{transport: transport}
+// 	// 	// Create Raft transport
+// 	// 	raftTransport := &RaftTransport{transport: transport}
 
-	// 	// Initialize Raft
-	// 	var err error
-	// 	logStore := raft.NewInmemStore()
-	// 	stableStore := raft.NewInmemStore()
-	// 	snapshotStore := raft.NewInmemSnapshotStore()
-	// 	raftNode, err = raft.NewRaft(config, &FSM{}, logStore, stableStore, snapshotStore, raftTransport)
-	// 	if err != nil {
-	// 		return err
-	// 	}
+// 	// 	// Initialize Raft
+// 	// 	var err error
+// 	// 	logStore := raft.NewInmemStore()
+// 	// 	stableStore := raft.NewInmemStore()
+// 	// 	snapshotStore := raft.NewInmemSnapshotStore()
+// 	// 	raftNode, err = raft.NewRaft(config, &FSM{}, logStore, stableStore, snapshotStore, raftTransport)
+// 	// 	if err != nil {
+// 	// 		return err
+// 	// 	}
 
-	// 	// Bootstrap the cluster
-	// 	if len(peers) == 1 {
-	// 		configuration := raft.Configuration{
-	// 			Servers: []raft.Server{
-	// 				{
-	// 					ID:      config.LocalID,
-	// 					Address: raft.ServerAddress(peers[0].IP),
-	// 				},
-	// 			},
-	// 		}
-	// 		raftNode.BootstrapCluster(configuration)
-	// 	}
-	// } else {
-		// // Use Honey Badger BFT for larger networks
-		// fmt.Println("Using Honey Badger BFT consensus")
+// 	// 	// Bootstrap the cluster
+// 	// 	if len(peers) == 1 {
+// 	// 		configuration := raft.Configuration{
+// 	// 			Servers: []raft.Server{
+// 	// 				{
+// 	// 					ID:      config.LocalID,
+// 	// 					Address: raft.ServerAddress(peers[0].IP),
+// 	// 				},
+// 	// 			},
+// 	// 		}
+// 	// 		raftNode.BootstrapCluster(configuration)
+// 	// 	}
+// 	// } else {
+// 		// // Use Honey Badger BFT for larger networks
+// 		// fmt.Println("Using Honey Badger BFT consensus")
 
-		// // Convert IP addresses to uint64 IDs
-		// // nodeIDs := make([]uint64, len(peers))
-		// // for i := range peers {
-		// // 	nodeIDs[i] = uint64(i + 1)
-		// // }
+// 		// // Convert IP addresses to uint64 IDs
+// 		// // nodeIDs := make([]uint64, len(peers))
+// 		// // for i := range peers {
+// 		// // 	nodeIDs[i] = uint64(i + 1)
+// 		// // }
 
-		// cfg := hbbft.Config{
-		// 	N:         len(peers),
-		// 	F:         (len(peers) - 1) / 3,
-		// 	ID:        uint64(1), // Use 1 as our ID
-		// 	Nodes:     peerIDs,
-		// 	BatchSize: 100,
-		// }
+// 		// cfg := hbbft.Config{
+// 		// 	N:         len(peers),
+// 		// 	F:         (len(peers) - 1) / 3,
+// 		// 	ID:        uint64(1), // Use 1 as our ID
+// 		// 	Nodes:     peerIDs,
+// 		// 	BatchSize: 100,
+// 		// }
 
-		// HB := hbbft.NewHoneyBadger(cfg)
+// 		// HB := hbbft.NewHoneyBadger(cfg)
 
-		// Handle incoming messages
-		// go func() {
-		// 	fmt.Printf("Node %d: Starting message handler\n", cfg.ID)
-		// 	for msg := range transport.Recv() {
-		// 		fmt.Printf("Node %d: Processing message: %v\n", cfg.ID, msg)
-		// 		if err := HB.HandleMessage(0, 0, &hbbft.ACSMessage{Payload: msg}); err != nil {
-		// 			fmt.Printf("Error handling message: %v\n", err)
-		// 		}
-		// 	}
-		// }()
-	// }
+// 		// Handle incoming messages
+// 		// go func() {
+// 		// 	fmt.Printf("Node %d: Starting message handler\n", cfg.ID)
+// 		// 	for msg := range transport.Recv() {
+// 		// 		fmt.Printf("Node %d: Processing message: %v\n", cfg.ID, msg)
+// 		// 		if err := HB.HandleMessage(0, 0, &hbbft.ACSMessage{Payload: msg}); err != nil {
+// 		// 			fmt.Printf("Error handling message: %v\n", err)
+// 		// 		}
+// 		// 	}
+// 		// }()
+// 	// }
 
-	return nil, HB
-}
+// 	return nil, HB
+// }
 
-func AddTransaction(data string) {
-	fmt.Printf("Adding transaction: %s\n", data)
-	if HB != nil {
-		// Use Honey Badger BFT
-		tx := Transaction{Data: data}
-		HB.AddTransaction(tx)
-	} else if raftNode != nil {
-		// Use Raft
-		raftNode.Apply([]byte(data), time.Second)
-	}
-}
 
-func StartConsensus() {
-	fmt.Println("Starting consensus engine")
-	if HB != nil {
-		// Start Honey Badger BFT in a goroutine
-		go func() {
-			HB.Start()
-		}()
-	}
-	// Raft starts automatically
-}
 
-func GetOutputs() map[uint64][]Transaction {
-	fmt.Println("Getting outputs")
-	outputs := make(map[uint64][]Transaction)
 
-	if HB != nil {
-		// Get Honey Badger BFT outputs
-		for epoch, txs := range HB.Outputs() {
-			var transactions []Transaction
-			for _, tx := range txs {
-				if t, ok := tx.(Transaction); ok {
-					transactions = append(transactions, t)
-				}
-			}
-			outputs[epoch] = transactions
-		}
-	} else if raftNode != nil {
-		// Get Raft outputs (simplified for demo)
-		outputs[0] = []Transaction{{Data: "Raft consensus output"}}
-	}
 
-	return outputs
-}
+// func InitConsensus(lenNodes int, peerIDs []uint64 ) {
+// 	var (
+// 		nodes = MakeNetwork(lenNodes, peerIDs)
+// 	)
+// 	for _, node := range nodes {
+// 		go node.run()
+// 		go func(node *Node) {
+// 			if err := node.HB.Start(); err != nil {
+// 				log.Fatal(err)
+// 			}
+// 			for _, msg := range node.HB.Messages() {
+// 				messages <- message{node.ID, msg}
+// 			}
+// 		}(node)
+// 	}
+
+// 	// handle the relayed transactions.
+// 	go func() {
+// 		for tx := range relayCh {
+// 			for _, node := range nodes {
+// 				node.addTransactions(tx)
+// 			}
+// 		}
+// 	}()
+
+// 	for {
+// 		msg := <-messages
+// 		node := nodes[msg.payload.To]
+// 		switch t := msg.payload.Payload.(type) {
+// 		case hbbft.HBMessage:
+// 			if err := node.hb.HandleMessage(msg.from, t.Epoch, t.Payload.(*hbbft.ACSMessage)); err != nil {
+// 				log.Fatal(err)
+// 			}
+// 			for _, msg := range node.hb.Messages() {
+// 				messages <- message{node.id, msg}
+// 			}
+// 		}
+// 	}
+// }
+
+// func AddTransaction(data string) {
+// 	fmt.Printf("Adding transaction: %s\n", data)
+// 	if HB != nil {
+// 		// Use Honey Badger BFT
+// 		tx := Transaction{Data: data}
+// 		HB.AddTransaction(tx)
+// 	} else if raftNode != nil {
+// 		// Use Raft
+// 		raftNode.Apply([]byte(data), time.Second)
+// 	}
+// }
+
+
+
+
+// func StartConsensus() {
+// 	fmt.Println("Starting consensus engine")
+// 	if HB != nil {
+// 		// Start Honey Badger BFT in a goroutine
+// 		go func() {
+// 			HB.Start()
+// 		}()
+// 	}
+// 	// Raft starts automatically
+// }
+
+// func GetOutputs() map[uint64][]Transaction {
+// 	fmt.Println("Getting outputs")
+// 	outputs := make(map[uint64][]Transaction)
+
+// 	if HB != nil {
+// 		// Get Honey Badger BFT outputs
+// 		for epoch, txs := range HB.Outputs() {
+// 			var transactions []Transaction
+// 			for _, tx := range txs {
+// 				if t, ok := tx.(Transaction); ok {
+// 					transactions = append(transactions, t)
+// 				}
+// 			}
+// 			outputs[epoch] = transactions
+// 		}
+// 	} else if raftNode != nil {
+// 		// Get Raft outputs (simplified for demo)
+// 		outputs[0] = []Transaction{{Data: "Raft consensus output"}}
+// 	}
+
+// 	return outputs
+// }
 
 // // RaftTransport implements raft.Transport
 // type RaftTransport struct {
