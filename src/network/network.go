@@ -4,6 +4,7 @@ import (
 	"blockchain-p2p-messenger/src/consensus"
 	"blockchain-p2p-messenger/src/peerDetails"
 	"crypto/ed25519"
+	"sync"
 
 	"encoding/hex"
 	"encoding/json"
@@ -23,7 +24,7 @@ type Message struct {
 	Message        string `json:"message"`
 	RoomID string `json:"room_id"`
 	DigitalSignature string `json:"digital_signature"`
-	timestamp uint64 `json:"timestamp"`
+	Timestamp uint64 `json:"timestamp"`
 }
 
 type Peer struct {
@@ -129,9 +130,6 @@ func InitializeNetwork(roomID string) error{
 
 
 	ListenOnPort(3000)
-
-	sendMessage("Joe biden", "room-xyz-987", 3000)
-	
 
 	return nil
 }
@@ -310,80 +308,118 @@ func SignMessage(message []byte) ([]byte) {
 
 	// Generate the public key from the private key
 	privateKey := ed25519.NewKeyFromSeed(privateKeyBytes[:ed25519.SeedSize])
-	publicKey := privateKey.Public().(ed25519.PublicKey)
-
-	// Print the public key (optional)
-	fmt.Printf("Public Key: %x\n", publicKey)
 
 	// Sign a message using the private key
 	// message := []byte("Hello, this is a test message.")
 	signature := ed25519.Sign(privateKey, message)	
 
-	// Print the signature
-	fmt.Printf("Message: %s\n", message)
-	fmt.Printf("Signature: %x\n", signature)
-
-	// Optionally, verify the signature
-	valid := ed25519.Verify(publicKey, message, signature)
-	if valid {
-		fmt.Println("Signature is valid.")
-	} else {
-		fmt.Println("Signature is invalid.")
-	}
 	return signature
 }
 
 // sendMessage creates a Message struct, signs it, and returns the message with the digital signature
-func sendMessage(messageContent string, roomID string, port uint64) (error) {
+// func SendMessage(messageContent string, roomID string, port uint64) (error) {
 	
-
+// 	// Get a list of everyones ip address in the room
+// 	peers := peerDetails.GetPeersInRoom(roomID)
 	
+// 	for _, peer := range(peers){
+// 		// Create the message struct
+// 		message := Message{
+// 			PublicKey: peer.PublicKey,
+// 			Message:   messageContent,
+// 			RoomID:    roomID,
+// 			timestamp: 0, 
+// 		}
 
-	// Get a list of everyones ip address in the room
+// 		// Sign the message using the SignMessage function
+// 		signature := SignMessage([]byte(messageContent))
+// 		// if err != nil {
+// 		// 	return fmt.Errorf("failed to sign message: %v", err)
+// 		// }
+
+// 		// Add the signature to the message
+// 		message.DigitalSignature = hex.EncodeToString(signature)
+
+// 		// Establish a TCP connection with all of them
+// 		conn, err := net.Dial("tcp", fmt.Sprint("%s:%s", peer.IP, string(port)))
+// 		if err != nil {
+// 			log.Fatal("Error connecting to server:", err)
+// 			os.Exit(1)
+// 		}
+// 		defer conn.Close() // Make sure the connection is closed when done
+
+// 		// Convert the Message struct to a JSON byte slice
+// 		msgBytes, err := json.Marshal(message)
+// 		if err != nil {
+// 			log.Fatal("Error converting struct to JSON:", err)
+// 		}
+
+// 		// Send the message
+// 		_, err = conn.Write([]byte(msgBytes))
+// 		if err != nil {
+// 			log.Fatal("Error sending message:", err)
+// 		}
+
+// 		fmt.Println("Message sent to", peer.IP)
+
+// 	}
+
+// 	return nil
+// }
+
+func SendMessage(messageContent string, roomID string, port uint64) error {
 	peers := peerDetails.GetPeersInRoom(roomID)
-	
-	for _, peer := range(peers){
-		// Create the message struct
-		message := Message{
-			PublicKey: peer.PublicKey,
-			Message:   messageContent,
-			RoomID:    roomID,
-			timestamp: 0, 
-		}
 
-		// Sign the message using the SignMessage function
-		signature := SignMessage([]byte(messageContent))
-		// if err != nil {
-		// 	return fmt.Errorf("failed to sign message: %v", err)
-		// }
+	var wg sync.WaitGroup
 
-		// Add the signature to the message
-		message.DigitalSignature = hex.EncodeToString(signature)
+	for _, peer := range peers {
+		wg.Add(1)
+		go func(peer peerDetails.Peer) {
+			defer wg.Done()
 
-		// Establish a TCP connection with all of them
-		conn, err := net.Dial("tcp", fmt.Sprint("%s:%s", peer.IP, string(port)))
-		if err != nil {
-			log.Fatal("Error connecting to server:", err)
-			os.Exit(1)
-		}
-		defer conn.Close() // Make sure the connection is closed when done
+			// Create the message struct
+			message := Message{
+				PublicKey: peer.PublicKey,
+				Message:   messageContent,
+				RoomID:    roomID,
+				Timestamp: uint64(time.Now().Unix()),
+			}
 
-		// Convert the Message struct to a JSON byte slice
-		msgBytes, err := json.Marshal(message)
-		if err != nil {
-			log.Fatal("Error converting struct to JSON:", err)
-		}
+			// Sign the message
+			signature := SignMessage([]byte(messageContent))
+			message.DigitalSignature = hex.EncodeToString(signature)
 
-		// Send the message
-		_, err = conn.Write([]byte(msgBytes))
-		if err != nil {
-			log.Fatal("Error sending message:", err)
-		}
+			// Dial peer
+			fmt.Println("Establishing connection with %s, %s.......", peer.IP, peer.PublicKey)
+			address := net.JoinHostPort(peer.IP, fmt.Sprintf("%d", port))
+			fmt.Println(address)
+			
+			conn, err := net.Dial("tcp", address)
+			if err != nil {
+				log.Printf("Error connecting to %s: %v\n", peer.IP, err)
+				return
+			}
+			defer conn.Close()
 
-		fmt.Println("Message sent to", peer.IP)
+			// Marshal message
+			msgBytes, err := json.Marshal(message)
+			if err != nil {
+				log.Printf("Error marshaling message for %s: %v\n", peer.IP, err)
+				return
+			}
 
+			// Send message
+			_, err = conn.Write(msgBytes)
+			if err != nil {
+				log.Printf("Error sending message to %s: %v\n", peer.IP, err)
+				return
+			}
+
+			fmt.Println("Message sent to", peer.IP)
+		}(peer) // Pass peer as an argument to avoid closure capture issues
 	}
 
+	wg.Wait() // Wait for all goroutines to finish
 	return nil
 }
 
