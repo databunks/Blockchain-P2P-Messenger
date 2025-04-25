@@ -15,13 +15,15 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/anthdm/hbbft"
+	//"github.com/anthdm/hbbft"
+	//"github.com/anthdm/hbbft"
 	"github.com/joho/godotenv"
 )
 
 type Message struct {
 	PublicKey      string `json:"public_key"`
 	Message        string `json:"message"`
+	Type string `json:"type"`
 	RoomID string `json:"room_id"`
 	DigitalSignature string `json:"digital_signature"`
 	Timestamp uint64 `json:"timestamp"`
@@ -56,8 +58,10 @@ type YggdrasilNodeInfo struct {
     Subnet          string `json:"subnet"`
 }
 
-var HB *hbbft.HoneyBadger
-var node *consensus.Node
+//var HB *hbbft.HoneyBadger
+//var node *consensus.Node
+
+var nodes []*consensus.Node
 
 
 func GetConsensusState(){
@@ -110,8 +114,8 @@ func InitializeNetwork(roomID string) error{
 		peerIDs = append(peerIDs, consensus.PublicKeyToID(peer.PublicKey))
 	}
 
-	nodes := consensus.MakeNetwork(len(peers), peerIDs)
-	messages := make(chan consensus.Message, 1024*1024)
+	nodes = consensus.MakeNetwork(len(peers), peerIDs)
+	//messages := make(chan consensus.Message, 1024*1024)
 
 	// Starting consensus 
 	for _, node := range nodes {
@@ -120,9 +124,10 @@ func InitializeNetwork(roomID string) error{
 			if err := node.HB.Start(); err != nil {
 				log.Fatal(err)
 			}
-			for _, msg := range node.HB.Messages() {
-				messages <- consensus.Message{node.ID, msg}
-			}
+			
+			// for _, msg := range node.HB.Messages() {
+			// 	messages <- consensus.Message{node.ID, msg}
+			// }
 		}(node)
 	}
 
@@ -194,28 +199,73 @@ func handleConnection(conn net.Conn) {
 		return
 	}
 
+	
+
 	// Convert received data to a string and log it
-	receivedMessage := string(buffer[:n])
-	log.Printf("Received from %s: %s", remoteAddr, receivedMessage)
+	// receivedMessage := string(buffer[:n])
+	// log.Printf("Received from %s: %s", remoteAddr, receivedMessage)
 
 
+	// Unmarshal the message into the Message struct
+	var message Message
+	err = json.Unmarshal(buffer[:n], &message)
+	if err != nil {
+		log.Printf("Error unmarshaling message: %v\n", err)
+		return
+	}
+
+	
 
 
 	// TODO: Timeout connection if nothing appears after 5 mins
 
 	// TODO: verify public key through signature
 
-	// TODO: if sender is not verified on allow list, reject connection 
+	// First we check if public key is in the room
+	peers := peerDetails.GetPeersInRoom(message.RoomID)
+	for _, peer := range(peers){
+		log.Printf("Peers Public Key: %s\nMessage Public Key:%s\n", peer.PublicKey, message.PublicKey)
+		if message.PublicKey == peer.PublicKey{
+			
+			// Validate the digital signature
+			if !VerifyMessageSignature([]byte(message.Message), message.DigitalSignature, peer.PublicKey) {
+				log.Printf("Invalid signature for message from %s\nMessage: %s\nSignature:%s", message.PublicKey, message.Message, message.DigitalSignature)
+	
+				responseMessage := "Invalid Digital Signature!!"
+				conn.Write([]byte(responseMessage)) // Send response to the client
+				return
+			}
 
-	// TODO: if sender requests admin stuff and is not admin then reject (this would probably be in consensus)
+			// TODO: if sender requests admin stuff and is not admin then reject (this would probably be in consensus)
+			log.Printf("Authenticated!")
+
+			nodeIndex := -1
+			for i := 0; i < len(nodes); i++{
+				if (nodes[i].ID == consensus.PublicKeyToID(message.PublicKey)){
+					nodeIndex = i
+					break
+				}
+			}
 
 
+			switch message.Type {
+			case "chat":
+				log.Printf(message.Message)				
+				nodes[nodeIndex].HB.AddTransaction(consensus.NewTransaction(message.Message))
+				fmt.Println(nodes[nodeIndex].HB.Outputs())
+			}
+
+			// TODO: Sending Messages, Saving to blockchain
+			// TODO: Adding them as transactions and syncing with consensus
+			return
+		}
+	}
 
 
-
-	// Optionally, send a response back to the client
-	responseMessage := "Message received!"
+	responseMessage := "Public Key Not Found In Allow List!"
 	conn.Write([]byte(responseMessage)) // Send response to the client
+
+
 }
 
 func ListenOnPort(port int) {
@@ -307,7 +357,7 @@ func SignMessage(message []byte) ([]byte) {
 	}
 
 	// Generate the public key from the private key
-	privateKey := ed25519.NewKeyFromSeed(privateKeyBytes[:ed25519.SeedSize])
+	privateKey := ed25519.PrivateKey(privateKeyBytes)
 
 	// Sign a message using the private key
 	// message := []byte("Hello, this is a test message.")
@@ -316,59 +366,49 @@ func SignMessage(message []byte) ([]byte) {
 	return signature
 }
 
-// sendMessage creates a Message struct, signs it, and returns the message with the digital signature
-// func SendMessage(messageContent string, roomID string, port uint64) (error) {
+
+// VerifyMessageSignature checks if the message was signed correctly using the sender's public key
+func VerifyMessageSignature(messageContent []byte, signatureHex string, publicKeyHex string) bool {
+    // Decode the hex-encoded public key
+    publicKeyBytes, err := hex.DecodeString(publicKeyHex)
+    if err != nil {
+        log.Printf("Error decoding public key: %v", err)
+        return false
+    }
+
+    // Decode the hex-encoded signature
+    signatureBytes, err := hex.DecodeString(signatureHex)
+    if err != nil {
+        log.Printf("Error decoding signature: %v", err)
+        return false
+    }
 	
-// 	// Get a list of everyones ip address in the room
-// 	peers := peerDetails.GetPeersInRoom(roomID)
-	
-// 	for _, peer := range(peers){
-// 		// Create the message struct
-// 		message := Message{
-// 			PublicKey: peer.PublicKey,
-// 			Message:   messageContent,
-// 			RoomID:    roomID,
-// 			timestamp: 0, 
-// 		}
 
-// 		// Sign the message using the SignMessage function
-// 		signature := SignMessage([]byte(messageContent))
-// 		// if err != nil {
-// 		// 	return fmt.Errorf("failed to sign message: %v", err)
-// 		// }
+    // Check signature validity using ed25519
+    isValid := ed25519.Verify(ed25519.PublicKey(publicKeyBytes), messageContent, signatureBytes)
 
-// 		// Add the signature to the message
-// 		message.DigitalSignature = hex.EncodeToString(signature)
+    if !isValid {
+        log.Println("Signature verification failed")
+    }
 
-// 		// Establish a TCP connection with all of them
-// 		conn, err := net.Dial("tcp", fmt.Sprint("%s:%s", peer.IP, string(port)))
-// 		if err != nil {
-// 			log.Fatal("Error connecting to server:", err)
-// 			os.Exit(1)
-// 		}
-// 		defer conn.Close() // Make sure the connection is closed when done
+    return isValid
+}
 
-// 		// Convert the Message struct to a JSON byte slice
-// 		msgBytes, err := json.Marshal(message)
-// 		if err != nil {
-// 			log.Fatal("Error converting struct to JSON:", err)
-// 		}
-
-// 		// Send the message
-// 		_, err = conn.Write([]byte(msgBytes))
-// 		if err != nil {
-// 			log.Fatal("Error sending message:", err)
-// 		}
-
-// 		fmt.Println("Message sent to", peer.IP)
-
-// 	}
-
-// 	return nil
-// }
 
 func SendMessage(messageContent string, roomID string, port uint64) error {
 	peers := peerDetails.GetPeersInRoom(roomID)
+
+	// Load environment variables from .env file
+	err := godotenv.Load("../keydetails.env")
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	// Get the ED25519 private key from the environment variable
+	publicKeyHex := os.Getenv("PUBLIC_KEY")
+	if publicKeyHex == "" {
+		log.Fatal("ED25519_PUBLIC_KEY is not set in .env file")
+	}
 
 	var wg sync.WaitGroup
 
@@ -379,7 +419,7 @@ func SendMessage(messageContent string, roomID string, port uint64) error {
 
 			// Create the message struct
 			message := Message{
-				PublicKey: peer.PublicKey,
+				PublicKey: publicKeyHex,
 				Message:   messageContent,
 				RoomID:    roomID,
 				Timestamp: uint64(time.Now().Unix()),
@@ -390,10 +430,10 @@ func SendMessage(messageContent string, roomID string, port uint64) error {
 			message.DigitalSignature = hex.EncodeToString(signature)
 
 			// Dial peer
-			fmt.Println("Establishing connection with %s, %s.......", peer.IP, peer.PublicKey)
+			fmt.Printf("Establishing connection with %s, %s.......\n", peer.IP, peer.PublicKey)
 			address := net.JoinHostPort(peer.IP, fmt.Sprintf("%d", port))
 			fmt.Println(address)
-			
+
 			conn, err := net.Dial("tcp", address)
 			if err != nil {
 				log.Printf("Error connecting to %s: %v\n", peer.IP, err)
@@ -415,13 +455,25 @@ func SendMessage(messageContent string, roomID string, port uint64) error {
 				return
 			}
 
-			fmt.Println("Message sent to", peer.IP)
+			// Read the response from the peer
+			buffer := make([]byte, 1024) // Buffer to store incoming data
+			n, err := conn.Read(buffer)
+			if err != nil {
+				log.Printf("Error reading response from %s: %v\n", peer.IP, err)
+				return
+			}
+
+			// Print the response received from the peer
+			response := string(buffer[:n])
+			fmt.Printf("Response from %s: %s\n", peer.IP, response)
+
 		}(peer) // Pass peer as an argument to avoid closure capture issues
 	}
 
 	wg.Wait() // Wait for all goroutines to finish
 	return nil
 }
+
 
 
 

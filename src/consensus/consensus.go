@@ -37,7 +37,7 @@ type Transaction struct {
 	Data string
 }
 
-func newTransaction(data string) *Transaction {
+func NewTransaction(data string) *Transaction {
 	return &Transaction{Data: data}
 }
 
@@ -120,7 +120,7 @@ func connectTransports(tt []hbbft.Transport) {
 func (n *Node) ReceiveTransaction(strtx string){
 
 	// tx will just be a message for now but later we add more
-	n.HB.AddTransaction(newTransaction(strtx))
+	n.HB.AddTransaction(NewTransaction(strtx))
 
 }
 

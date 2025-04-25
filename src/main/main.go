@@ -24,8 +24,9 @@ func main() {
 	// peerDetails.RemovePeer(publicKey, roomID)
 	// network.GetYggdrasilPeers()
 
+	network.InitializeNetwork("room-xyz-987")
 	network.ListenOnPort(3000)
-	// network.InitializeNetwork("room-xyz-987")
+	// 
 
 	// network.SendMessage("This is joe biden speaking", roomID, 3000)
 }
