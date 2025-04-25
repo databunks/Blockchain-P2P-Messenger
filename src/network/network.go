@@ -77,7 +77,9 @@ func InitializeNetwork(roomID string) error{
 	for i := 0; i < 10; i++{
 
 		
-		peersOnline, _, _ := GetYggdrasilPeers()
+		peersOnline, _ := GetYggdrasilPeers("unique")
+
+
 		peers = peerDetails.GetPeersInRoom(roomID)
 
 		peerSet := make(map[string]struct{})
@@ -138,8 +140,20 @@ func InitializeNetwork(roomID string) error{
 
 	return nil
 }
+
+
+// Function to check if an item is not in a list
+func isNotInList(item Peer, list []Peer) bool {
+    for _, v := range list {
+        if v == item {
+            return false // Item found, it's in the list
+        }
+    }
+    return true // Item not found, it's not in the list
+}
+
 // GetYggdrasilPeers returns a list of Yggdrasil peer IP addresses
-func GetYggdrasilPeers() ([]Peer, []Peer, error) {
+func GetYggdrasilPeers(mode string) ([]Peer, error) {
 	out, err := exec.Command("sudo", "yggdrasilctl", "-json", "getPeers").Output()
 
 	if err != nil {
@@ -151,22 +165,38 @@ func GetYggdrasilPeers() ([]Peer, []Peer, error) {
 		log.Fatalf("Failed to parse JSON: %v", err)
 	}
 
-	// Categorize peers
-	inPeers := []Peer{}
-	outPeers := []Peer{}
+	switch mode{
+		case "inbound":
+			inPeers := []Peer{}
+			for _, p := range peerList.Peers {
+				if p.Inbound {
+					inPeers = append(inPeers, p)
+				} 
+			}
+			return inPeers, err
+			
+		case "outbound":
+			outPeers := []Peer{}
+			for _, p := range peerList.Peers {
+				if !p.Inbound {
+					outPeers = append(outPeers, p)
+				} 
+			}
+			return outPeers, err
 
-	for _, p := range peerList.Peers {
-		if p.Inbound {
-			inPeers = append(inPeers, p)
-		} else {
-			outPeers = append(outPeers, p)
-		}
+		case "unique":
+			uniquePeers := []Peer{}
+			for _, p := range peerList.Peers {
+				if isNotInList(p, uniquePeers){
+					uniquePeers = append(uniquePeers, p)
+				}
+			}
+			return uniquePeers, err
+
 	}
 
-	log.Printf("Inbound Peers: %v", inPeers)
-	log.Printf("Outbound Peers: %v", outPeers)
 
-	return inPeers, outPeers, err
+	return nil, nil
 }
 
 
