@@ -280,9 +280,15 @@ func handleConnection(conn net.Conn) {
 
 			switch message.Type {
 			case "chat":
-				log.Printf(message.Message)				
-				nodes[nodeIndex].HB.AddTransaction(consensus.NewTransaction(message.Message))
-				fmt.Println(nodes[nodeIndex].HB.Outputs())
+				log.Printf(message.Message)	
+				
+				for _, node := range(nodes){
+					if (node.ID == uint64(nodeIndex)){
+						node.HB.AddTransaction(consensus.NewTransaction(message.Message))
+						fmt.Println(node.HB.Outputs())
+						break
+					}
+				}
 			}
 
 			// TODO: Sending Messages, Saving to blockchain
@@ -425,7 +431,7 @@ func VerifyMessageSignature(messageContent []byte, signatureHex string, publicKe
 }
 
 
-func SendMessage(messageContent string, roomID string, port uint64) error {
+func SendMessage(messageContent string, roomID string, port uint64, typeofmessage string) error {
 	peers := peerDetails.GetPeersInRoom(roomID)
 
 	// Load environment variables from .env file
@@ -452,6 +458,7 @@ func SendMessage(messageContent string, roomID string, port uint64) error {
 				PublicKey: publicKeyHex,
 				Message:   messageContent,
 				RoomID:    roomID,
+				Type: typeofmessage,
 				Timestamp: uint64(time.Now().Unix()),
 			}
 
