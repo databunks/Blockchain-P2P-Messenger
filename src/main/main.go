@@ -15,7 +15,7 @@ func main() {
 	publicKey3_VM3 := "9356e1f92f5adff2ab05115d54aff4b8c756d604704b5ddd71ff320f2d5aeecb"
 	ip := "219:84b6:648e:9ca5:e124:49ed:42d2:e6a3" // fake IPv6 address
 	isAdmin := false
-	roomID := "room-xyz-987" // mock room ID
+	roomID := "room-xyz-987" // mock room IDd
 
 	peerDetails.AddPeer(publicKey_VM1, ip, isAdmin, roomID)
 	peerDetails.AddPeer(publicKey2_VM2, ip, isAdmin, roomID)

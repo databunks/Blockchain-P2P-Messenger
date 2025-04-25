@@ -6,3 +6,4 @@
 *.csr
 *.der
 *.json
+src/main/main.go
