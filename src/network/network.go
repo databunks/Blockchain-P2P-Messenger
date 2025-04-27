@@ -14,9 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"time"
-
-	//"github.com/anthdm/hbbft"
-	//"github.com/anthdm/hbbft"
+	"github.com/anthdm/hbbft"
 	"github.com/joho/godotenv"
 )
 
@@ -58,15 +56,10 @@ type YggdrasilNodeInfo struct {
     Subnet          string `json:"subnet"`
 }
 
-//var HB *hbbft.HoneyBadger
-//var node *consensus.Node
-
-var nodes []*consensus.Node
+var hb *hbbft.HoneyBadger
 
 
-func GetConsensusState(){
 
-}
 
 func InitializeNetwork(roomID string) error{
 
@@ -97,7 +90,7 @@ func InitializeNetwork(roomID string) error{
 			}
 		}
 		if lenPeers < 3 {
-			fmt.Printf("Retrying.... (attempt %d)\n", i)
+			fmt.Printf("Retrying Connection.... (attempt %d)\n", i)
 			time.Sleep(5 * time.Second)
 		} else if (lenPeers >= 3) {
 			fmt.Printf("Initializing consensus with Yggdrasil peers: %v\n", peers)
@@ -116,25 +109,20 @@ func InitializeNetwork(roomID string) error{
 		peerIDs = append(peerIDs, consensus.PublicKeyToID(peer.PublicKey))
 	}
 
-	nodes = consensus.MakeNetwork(len(peers), peerIDs)
-	//messages := make(chan consensus.Message, 1024*1024)
-
-	// Starting consensus 
-	for _, node := range nodes {
-		//go node.run()
-		go func(node *consensus.Node) {
-			if err := node.HB.Start(); err != nil {
-				log.Fatal(err)
-			}
-			
-			// for _, msg := range node.HB.Messages() {
-			// 	messages <- consensus.Message{node.ID, msg}
-			// }
-		}(node)
+	cfg := hbbft.Config{
+		// The number of nodes in the network.
+		N: len(peerIDs),
+		// Identifier of this node.
+		ID: consensus.PublicKeyToID(GetYggdrasilNodeInfo().Key),
+		// Identifiers of the participating nodes.
+		Nodes: peerIDs,
+		// The prefered batch size. If BatchSize is empty, an ideal batch size will
+		// be choosen for you.
+		BatchSize: 5,
 	}
 
-	// Synchronize if behind
-
+	hb = hbbft.NewHoneyBadger(cfg)
+	hb.Start()
 
 	ListenOnPort(3000)
 
@@ -243,13 +231,8 @@ func handleConnection(conn net.Conn) {
 		log.Printf("Error unmarshaling message: %v\n", err)
 		return
 	}
-
+	message.Timestamp = uint64(time.Now().Unix())
 	
-
-
-	// TODO: Timeout connection if nothing appears after 5 mins
-
-	// TODO: verify public key through signature
 
 	// First we check if public key is in the room
 	peers := peerDetails.GetPeersInRoom(message.RoomID)
@@ -266,29 +249,19 @@ func handleConnection(conn net.Conn) {
 				return
 			}
 
-			// TODO: if sender requests admin stuff and is not admin then reject (this would probably be in consensus)
+			
 			log.Printf("Authenticated!")
-
-			nodeIndex := -1
-			for i := 0; i < len(nodes); i++{
-				if (nodes[i].ID == consensus.PublicKeyToID(message.PublicKey)){
-					nodeIndex = i
-					break
-				}
-			}
 
 
 			switch message.Type {
 			case "chat":
 				log.Printf(message.Message)	
+
+				// Doesent store message content (apart from sender, type, digital signature and timestamp)
+				hb.AddTransaction(consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp))
+
+				fmt.Println(hb.Outputs())
 				
-				for _, node := range(nodes){
-					if (node.ID == uint64(nodeIndex)){
-						node.HB.AddTransaction(consensus.NewTransaction(message.Message))
-						fmt.Println(node.HB.Outputs())
-						break
-					}
-				}
 			}
 
 			// TODO: Sending Messages, Saving to blockchain

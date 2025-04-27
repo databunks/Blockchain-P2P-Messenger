@@ -142,6 +142,8 @@ func (s *Server) commitLoop() {
 			out := s.hb.Outputs()
 			for _, txx := range out {
 				for _, tx := range txx {
+					//t := tx.(*Transaction)
+    				//fmt.Printf("Committed TX -> Nonce: %d, Data: %s\n", t.Nonce, t.Data)
 					hash := tx.Hash()
 					s.lock.Lock()
 					if _, ok := s.mempool[string(hash)]; !ok {
@@ -162,6 +164,7 @@ func (s *Server) commitLoop() {
 				fmt.Printf("SERVER (%d)\n", s.id)
 				fmt.Printf("commited %d transactions over %v\n", s.totalCommit, delta)
 				fmt.Printf("throughput %d TX/s\n", s.totalCommit/int(delta.Seconds()))
+				fmt.Println("Transactions:")
 				fmt.Println("===============================================")
 				fmt.Println("")
 			}
@@ -208,10 +211,11 @@ func makeids(n int) []uint64 {
 // Transaction represents a transacion -\_(^_^)_/-.
 type Transaction struct {
 	Nonce uint64
+	Data string
 }
 
 func newTransaction() *Transaction {
-	return &Transaction{rand.Uint64()}
+	return &Transaction{rand.Uint64(), "Benis"}
 }
 
 // Hash implements the hbbft.Transaction interface.

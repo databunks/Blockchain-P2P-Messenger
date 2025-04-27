@@ -29,16 +29,19 @@ var (
 )
 
 func (t Transaction) Hash() []byte {
-	return []byte(t.Data)
+	return []byte(t.digitalSignature)
 }
 
 
 type Transaction struct {
-	Data string
+	senderPublicKey string
+	typeofmessage string
+	digitalSignature string
+	timestamp uint64
 }
 
-func NewTransaction(data string) *Transaction {
-	return &Transaction{Data: data}
+func NewTransaction(senderPublicKey string, typeofmessage string, digitalSignature string, timestamp uint64) *Transaction {
+	return &Transaction{senderPublicKey: senderPublicKey, typeofmessage: typeofmessage, digitalSignature: digitalSignature, timestamp: timestamp}
 }
 
 
@@ -117,12 +120,12 @@ func connectTransports(tt []hbbft.Transport) {
 	}
 }
 
-func (n *Node) ReceiveTransaction(strtx string){
+// func (n *Node) ReceiveTransaction(strtx string){
 
-	// tx will just be a message for now but later we add more
-	n.HB.AddTransaction(NewTransaction(strtx))
+// 	// tx will just be a message for now but later we add more
+// 	n.HB.AddTransaction(NewTransaction(strtx))
 
-}
+// }
 
 // Hash implements the hbbft.Transaction interface.
 // func (t *Transaction) Hash() []byte {
