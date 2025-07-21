@@ -27,6 +27,10 @@ type keySet struct {
 	count uint64
 }
 
+func SimpleGen() {
+	
+}
+
 func GenerateKeys() {
 	if err := protect.Pledge("stdio"); err != nil {
 		panic(err)

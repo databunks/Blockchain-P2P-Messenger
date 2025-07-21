@@ -41,7 +41,7 @@ type Transaction struct {
 }
 
 func NewTransaction(senderPublicKey string, typeofmessage string, digitalSignature string, timestamp uint64) *Transaction {
-	return &Transaction{senderPublicKey: senderPublicKey, typeofmessage: typeofmessage, digitalSignature: digitalSignature, timestamp: timestamp}
+	return &Transaction{senderPublicKey, typeofmessage, digitalSignature, timestamp}
 }
 
 

@@ -1,11 +1,13 @@
 package main
 
-import ("blockchain-p2p-messenger/src/network"
-
-// "blockchain-p2p-messenger/src/consensus"
-"blockchain-p2p-messenger/src/peerDetails"
-// "crypto/ed25519"
-// "fmt"
+import (
+	//"blockchain-p2p-messenger/src/genkeys"
+	// "blockchain-p2p-messenger/src/simulations"
+	"blockchain-p2p-messenger/src/network"
+	// "blockchain-p2p-messenger/src/consensus"
+	"blockchain-p2p-messenger/src/peerDetails"
+	// "crypto/ed25519"
+	// "fmt"
 )
 
 func main() {
@@ -21,14 +23,15 @@ func main() {
 	peerDetails.AddPeer(publicKey2_VM2, ip, isAdmin, roomID)
 	peerDetails.AddPeer(publicKey3_VM3, ip, isAdmin, roomID)
 
-	// peerDetails.RemovePeer(publicKey, roomID)
-	// network.GetYggdrasilPeers()
+	// // peerDetails.RemovePeer(publicKey, roomID)
+	// // network.GetYggdrasilPeers()
 
-	//network.InitializeNetwork("room-xyz-987")
+	network.InitializeNetwork("room-xyz-987")
 
-	network.SendMessage("This is joe biden speaking", roomID, 3000, "chat")
-	//network.ListenOnPort(3000)
+	//network.SendMessage("This is joe biden speaking", roomID, 3000, "chat")
+	network.ListenOnPort(3000)
 	// 
 
-	
+	//genkeys.GenerateKeys()
+	// simulations.DigitalSignatureForgeryTest(roomID, 3000)
 }

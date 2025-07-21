@@ -4,8 +4,6 @@ import (
 	"blockchain-p2p-messenger/src/consensus"
 	"blockchain-p2p-messenger/src/peerDetails"
 	"crypto/ed25519"
-	"sync"
-
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -13,18 +11,25 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"sync"
 	"time"
+
 	"github.com/anthdm/hbbft"
 	"github.com/joho/godotenv"
 )
 
 type Message struct {
-	PublicKey      string `json:"public_key"`
-	Message        string `json:"message"`
-	Type string `json:"type"`
-	RoomID string `json:"room_id"`
+	PublicKey        string `json:"public_key"`
+	Message          string `json:"message"`
+	Type             string `json:"type"`
+	RoomID           string `json:"room_id"`
 	DigitalSignature string `json:"digital_signature"`
-	Timestamp uint64 `json:"timestamp"`
+	Timestamp        uint64 `json:"timestamp"`
+}
+
+type message struct {
+	from   uint64
+	payload hbbft.MessageTuple
 }
 
 type Peer struct {
@@ -46,32 +51,26 @@ type PeerList struct {
 	Peers []Peer `json:"peers"`
 }
 
-
 type YggdrasilNodeInfo struct {
-    BuildName       string `json:"build_name"`
-    BuildVersion    string `json:"build_version"`
-    Key             string `json:"key"`
-    Address         string `json:"address"`
-    RoutingEntries  int    `json:"routing_entries"`
-    Subnet          string `json:"subnet"`
+	BuildName      string `json:"build_name"`
+	BuildVersion   string `json:"build_version"`
+	Key            string `json:"key"`
+	Address        string `json:"address"`
+	RoutingEntries int    `json:"routing_entries"`
+	Subnet         string `json:"subnet"`
 }
 
 var hb *hbbft.HoneyBadger
 
+var messages = make(chan message, 1024*1024)
 
+func InitializeNetwork(roomID string) error {
 
-
-func InitializeNetwork(roomID string) error{
-
-	
 	peers := peerDetails.GetPeersInRoom(roomID)
 
-	
-	for i := 0; i < 10; i++{
+	for i := 0; i < 10; i++ {
 
-		
 		peersOnline, _ := GetYggdrasilPeers("unique")
-
 
 		peers = peerDetails.GetPeersInRoom(roomID)
 
@@ -92,17 +91,17 @@ func InitializeNetwork(roomID string) error{
 		if lenPeers < 3 {
 			fmt.Printf("Retrying Connection.... (attempt %d)\n", i)
 			time.Sleep(5 * time.Second)
-		} else if (lenPeers >= 3) {
+		} else if lenPeers >= 3 {
 			fmt.Printf("Initializing consensus with Yggdrasil peers: %v\n", peers)
 			break
-		} else if (i == 9){
+		} else if i == 9 {
 			return fmt.Errorf("error: Not enough nodes have been connected (%d nodes connected)", i)
 		}
 	}
 
 	// Link peers to consensus (public key is passed into node id)
 	// (New node represents our local server)
-	var peerIDs []uint64 
+	var peerIDs []uint64
 
 	// Translating public keys to uint34 IDs
 	for _, peer := range peers {
@@ -111,33 +110,46 @@ func InitializeNetwork(roomID string) error{
 
 	cfg := hbbft.Config{
 		// The number of nodes in the network.
-		N: len(peerIDs),
+		N: 4,
 		// Identifier of this node.
-		ID: consensus.PublicKeyToID(GetYggdrasilNodeInfo().Key),
+		ID: 101,
 		// Identifiers of the participating nodes.
-		Nodes: peerIDs,
+		Nodes: []uint64{67, 1, 99, 101},
 		// The prefered batch size. If BatchSize is empty, an ideal batch size will
 		// be choosen for you.
-		BatchSize: 5,
+		BatchSize: 100,
 	}
 
+	fmt.Println(len(peerIDs))
 	hb = hbbft.NewHoneyBadger(cfg)
-	hb.Start()
+	go hb.Start()
+
+	for _, msg := range hb.Messages() {
+		messages <- message{node.id, msg}
+	}
+
+	// go func() {
+	// 	for {
+	// 		// Check if there's any new output in the map
+	// 		for epoch, tx := range hb.Outputs() {
+	// 			fmt.Printf("batch for epoch %d: %v\n", epoch, tx)
+	// 		  }
+	// 	}
+	// }()
 
 	ListenOnPort(3000)
 
 	return nil
 }
 
-
 // Function to check if an item is not in a list
 func isNotInList(item Peer, list []Peer) bool {
-    for _, v := range list {
-        if v == item {
-            return false // Item found, it's in the list
-        }
-    }
-    return true // Item not found, it's not in the list
+	for _, v := range list {
+		if v == item {
+			return false // Item found, it's in the list
+		}
+	}
+	return true // Item not found, it's not in the list
 }
 
 // GetYggdrasilPeers returns a list of Yggdrasil peer IP addresses
@@ -153,42 +165,40 @@ func GetYggdrasilPeers(mode string) ([]Peer, error) {
 		log.Fatalf("Failed to parse JSON: %v", err)
 	}
 
-	switch mode{
-		case "inbound":
-			inPeers := []Peer{}
-			for _, p := range peerList.Peers {
-				if p.Inbound {
-					inPeers = append(inPeers, p)
-				} 
+	switch mode {
+	case "inbound":
+		inPeers := []Peer{}
+		for _, p := range peerList.Peers {
+			if p.Inbound {
+				inPeers = append(inPeers, p)
 			}
-			return inPeers, err
-			
-		case "outbound":
-			outPeers := []Peer{}
-			for _, p := range peerList.Peers {
-				if !p.Inbound {
-					outPeers = append(outPeers, p)
-				} 
-			}
-			return outPeers, err
+		}
+		return inPeers, err
 
-		case "unique":
-			uniquePeers := []Peer{}
-			for _, p := range peerList.Peers {
-				if isNotInList(p, uniquePeers){
-					uniquePeers = append(uniquePeers, p)
-				}
+	case "outbound":
+		outPeers := []Peer{}
+		for _, p := range peerList.Peers {
+			if !p.Inbound {
+				outPeers = append(outPeers, p)
 			}
-			return uniquePeers, err
+		}
+		return outPeers, err
+
+	case "unique":
+		uniquePeers := []Peer{}
+		for _, p := range peerList.Peers {
+			if isNotInList(p, uniquePeers) {
+				uniquePeers = append(uniquePeers, p)
+			}
+		}
+		return uniquePeers, err
 
 	}
-
 
 	return nil, nil
 }
 
-
-func GetYggdrasilNodeInfo() YggdrasilNodeInfo{
+func GetYggdrasilNodeInfo() YggdrasilNodeInfo {
 	out, err := exec.Command("sudo", "yggdrasilctl", "-json", "getSelf").Output()
 	if err != nil {
 		log.Fatalf("Failed to run yggdrasilctl: %v", err)
@@ -201,7 +211,6 @@ func GetYggdrasilNodeInfo() YggdrasilNodeInfo{
 
 	return yggdrasilNodeInfo
 }
-
 
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
@@ -217,12 +226,9 @@ func handleConnection(conn net.Conn) {
 		return
 	}
 
-	
-
 	// Convert received data to a string and log it
 	// receivedMessage := string(buffer[:n])
 	// log.Printf("Received from %s: %s", remoteAddr, receivedMessage)
-
 
 	// Unmarshal the message into the Message struct
 	var message Message
@@ -232,36 +238,49 @@ func handleConnection(conn net.Conn) {
 		return
 	}
 	message.Timestamp = uint64(time.Now().Unix())
-	
 
 	// First we check if public key is in the room
 	peers := peerDetails.GetPeersInRoom(message.RoomID)
-	for _, peer := range(peers){
+	for _, peer := range peers {
 		log.Printf("Peers Public Key: %s\nMessage Public Key:%s\n", peer.PublicKey, message.PublicKey)
-		if message.PublicKey == peer.PublicKey{
-			
+		if message.PublicKey == peer.PublicKey {
+			// Test cases: Intrusion rate, verification speed, timing
+			// Proper authorization
+			// Confidentialty: E2EE, tampering,
+			// Integrity of blockchain
+
 			// Validate the digital signature
 			if !VerifyMessageSignature([]byte(message.Message), message.DigitalSignature, peer.PublicKey) {
 				log.Printf("Invalid signature for message from %s\nMessage: %s\nSignature:%s", message.PublicKey, message.Message, message.DigitalSignature)
-	
+
 				responseMessage := "Invalid Digital Signature!!"
 				conn.Write([]byte(responseMessage)) // Send response to the client
 				return
 			}
 
-			
 			log.Printf("Authenticated!")
-
 
 			switch message.Type {
 			case "chat":
-				log.Printf(message.Message)	
+				log.Printf(message.Message)
 
 				// Doesent store message content (apart from sender, type, digital signature and timestamp)
-				hb.AddTransaction(consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp))
+				tx := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp)
+				hb.AddTransaction(tx)
 
-				fmt.Println(hb.Outputs())
+				switch t := message.payload.Payload.(type) {
+				case hbbft.HBMessage:
+
+					fmt.Println("HB_Mesage!!!!!!!!!!!!!")
+					if err := hb.HandleMessage(consensus.PublicKeyToID(message.PublicKey), t.Epoch, t.Payload.(*hbbft.ACSMessage)); err != nil {
+						log.Fatal(err)
+					}
 				
+					// for _, msg := range hb.Messages() {
+					// 	messages <- message{consensus.PublicKeyToID(message.PublicKey), msg}
+					// }
+				}
+				fmt.Println("Added Message as Transaction")
 			}
 
 			// TODO: Sending Messages, Saving to blockchain
@@ -270,10 +289,8 @@ func handleConnection(conn net.Conn) {
 		}
 	}
 
-
 	responseMessage := "Public Key Not Found In Allow List!"
 	conn.Write([]byte(responseMessage)) // Send response to the client
-
 
 }
 
@@ -301,8 +318,6 @@ func ListenOnPort(port int) {
 	}
 }
 
-
-
 // SignMessage signs a message with the private key and returns the signature.
 // func SignMessage(message []byte) ([]byte, error) {
 
@@ -312,16 +327,14 @@ func ListenOnPort(port int) {
 // 		log.Fatalf("Error loading .env file: %v", err)
 // 	}
 
-	
 // 	// Access a specific environment variable
 // 	hexPrivateKey := os.Getenv("PRIVATE_KEY")
-	
+
 // 	// Convert the hex string to bytes
 // 	privateKeyBytes, err := hex.DecodeString(hexPrivateKey)
 // 	if err != nil {
 // 		log.Fatalf("Failed to decode hex string: %v", err)
 // 	}
-	
 
 // 	hexPrivateKey = ""
 
@@ -329,19 +342,15 @@ func ListenOnPort(port int) {
 // 	if len(privateKeyBytes) != ed25519.PrivateKeySize {
 // 		log.Fatalf("Invalid private key size: expected %d bytes, got %d bytes", ed25519.PrivateKeySize, len(privateKeyBytes))
 // 	}
-	
 
 // 	privateKey := ed25519.PrivateKey(privateKeyBytes)
 
-	
 // 	signature := privateKey.Sign(message)
 
-	
 // 	return signature, nil
 // }
 
-
-func SignMessage(message []byte) ([]byte) {
+func SignMessage(message []byte) []byte {
 	// Load environment variables from .env file
 	err := godotenv.Load("../keydetails.env")
 	if err != nil {
@@ -370,39 +379,36 @@ func SignMessage(message []byte) ([]byte) {
 
 	// Sign a message using the private key
 	// message := []byte("Hello, this is a test message.")
-	signature := ed25519.Sign(privateKey, message)	
+	signature := ed25519.Sign(privateKey, message)
 
 	return signature
 }
 
-
 // VerifyMessageSignature checks if the message was signed correctly using the sender's public key
 func VerifyMessageSignature(messageContent []byte, signatureHex string, publicKeyHex string) bool {
-    // Decode the hex-encoded public key
-    publicKeyBytes, err := hex.DecodeString(publicKeyHex)
-    if err != nil {
-        log.Printf("Error decoding public key: %v", err)
-        return false
-    }
+	// Decode the hex-encoded public key
+	publicKeyBytes, err := hex.DecodeString(publicKeyHex)
+	if err != nil {
+		log.Printf("Error decoding public key: %v", err)
+		return false
+	}
 
-    // Decode the hex-encoded signature
-    signatureBytes, err := hex.DecodeString(signatureHex)
-    if err != nil {
-        log.Printf("Error decoding signature: %v", err)
-        return false
-    }
-	
+	// Decode the hex-encoded signature
+	signatureBytes, err := hex.DecodeString(signatureHex)
+	if err != nil {
+		log.Printf("Error decoding signature: %v", err)
+		return false
+	}
 
-    // Check signature validity using ed25519
-    isValid := ed25519.Verify(ed25519.PublicKey(publicKeyBytes), messageContent, signatureBytes)
+	// Check signature validity using ed25519
+	isValid := ed25519.Verify(ed25519.PublicKey(publicKeyBytes), messageContent, signatureBytes)
 
-    if !isValid {
-        log.Println("Signature verification failed")
-    }
+	if !isValid {
+		log.Println("Signature verification failed")
+	}
 
-    return isValid
+	return isValid
 }
-
 
 func SendMessage(messageContent string, roomID string, port uint64, typeofmessage string) error {
 	peers := peerDetails.GetPeersInRoom(roomID)
@@ -422,6 +428,8 @@ func SendMessage(messageContent string, roomID string, port uint64, typeofmessag
 	var wg sync.WaitGroup
 
 	for _, peer := range peers {
+		// ignore if peer in blockchain
+
 		wg.Add(1)
 		go func(peer peerDetails.Peer) {
 			defer wg.Done()
@@ -431,12 +439,14 @@ func SendMessage(messageContent string, roomID string, port uint64, typeofmessag
 				PublicKey: publicKeyHex,
 				Message:   messageContent,
 				RoomID:    roomID,
-				Type: typeofmessage,
+				Type:      typeofmessage,
 				Timestamp: uint64(time.Now().Unix()),
 			}
 
+			timestampBytes := []byte(fmt.Sprintf("%d", message.Timestamp))
+
 			// Sign the message
-			signature := SignMessage([]byte(messageContent))
+			signature := SignMessage(append([]byte(messageContent), timestampBytes...))
 			message.DigitalSignature = hex.EncodeToString(signature)
 
 			// Dial peer
@@ -484,9 +494,6 @@ func SendMessage(messageContent string, roomID string, port uint64, typeofmessag
 	return nil
 }
 
-
-
-
 func StartYggdrasilServer() error {
 
 	// inPeers, _, err := GetYggdrasilPeers()
@@ -498,8 +505,3 @@ func StartYggdrasilServer() error {
 
 	return nil
 }
-
-
-
-
-

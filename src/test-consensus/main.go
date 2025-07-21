@@ -39,6 +39,7 @@ func main() {
 			if err := node.hb.Start(); err != nil {
 				log.Fatal(err)
 			}
+			// dis da one
 			for _, msg := range node.hb.Messages() {
 				messages <- message{node.id, msg}
 			}
@@ -46,13 +47,13 @@ func main() {
 	}
 
 	// handle the relayed transactions.
-	go func() {
-		for tx := range relayCh {
-			for _, node := range nodes {
-				node.addTransactions(tx)
-			}
-		}
-	}()
+	// go func() {
+	// 	for tx := range relayCh {
+	// 		for _, node := range nodes {
+	// 			node.addTransactions(tx)
+	// 		}
+	// 	}
+	// }()
 
 	for {
 		msg := <-messages
@@ -130,7 +131,8 @@ func (s *Server) txLoop() {
 	timer := time.NewTicker(1 * time.Second)
 	for {
 		<-timer.C
-		s.addTransactions(makeTransactions(1000)...)
+		//s.addTransactions(makeTransactions(1000)...)
+		s.hb.AddTransaction(newTransaction())
 	}
 }
 
@@ -141,20 +143,21 @@ func (s *Server) commitLoop() {
 		select {
 		case <-timer.C:
 			out := s.hb.Outputs()
-			for _, txx := range out {
-				for _, tx := range txx {
-					hash := tx.Hash()
-					s.lock.Lock()
-					if _, ok := s.mempool[string(hash)]; !ok {
-						// Transaction is not in our mempool which implies we
-						// need to do verification.
-						s.verifyTransaction(tx.(*Transaction))
-					}
-					n++
-					delete(s.mempool, string(hash))
-					s.lock.Unlock()
-				}
-			}
+			fmt.Println(out)
+			// for _, txx := range out {
+			// 	for _, tx := range txx {
+			// 		hash := tx.Hash()
+			// 		s.lock.Lock()
+			// 		if _, ok := s.mempool[string(hash)]; !ok {
+			// 			// Transaction is not in our mempool which implies we
+			// 			// need to do verification.
+			// 			s.verifyTransaction(tx.(*Transaction))
+			// 		}
+			// 		n++
+			// 		delete(s.mempool, string(hash))
+			// 		s.lock.Unlock()
+			// 	}
+			// }
 			s.totalCommit += n
 			delta := time.Since(s.start)
 			if s.id == 1 {
@@ -183,7 +186,7 @@ func makeNetwork(n int) []*Server {
 		transports[i] = hbbft.NewLocalTransport(uint64(i))
 		nodes[i] = newServer(uint64(i), transports[i], makeids(n))
 	}
-	connectTransports(transports)
+	//connectTransports(transports)
 	return nodes
 }
 
