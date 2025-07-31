@@ -4,6 +4,9 @@ import (
 	"blockchain-p2p-messenger/src/consensus"
 	"blockchain-p2p-messenger/src/peerDetails"
 	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/gob"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -11,6 +14,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"sort"
 	"sync"
 	"time"
 
@@ -28,7 +32,7 @@ type Message struct {
 }
 
 type message struct {
-	from   uint64
+	from    uint64
 	payload hbbft.MessageTuple
 }
 
@@ -60,9 +64,21 @@ type YggdrasilNodeInfo struct {
 	Subnet         string `json:"subnet"`
 }
 
-var hb *hbbft.HoneyBadger
 
-var messages = make(chan message, 1024*1024)
+
+
+
+
+var nodes []*consensus.Server
+
+var peerIDs []uint64
+
+var nodeIDs []uint64
+
+func init() {
+    gob.Register(&consensus.Transaction{})
+}
+
 
 func InitializeNetwork(roomID string) error {
 
@@ -101,46 +117,54 @@ func InitializeNetwork(roomID string) error {
 
 	// Link peers to consensus (public key is passed into node id)
 	// (New node represents our local server)
-	var peerIDs []uint64
+
+
+
+	// Adding current public key in
+	// Load environment variables from .env file
+	err := godotenv.Load("../keydetails.env")
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	// Get the ED25519 private key from the environment variable
+	publicKeyHex := os.Getenv("PUBLIC_KEY")
+	if publicKeyHex == "" {
+		log.Fatal("ED25519_PUBLIC_KEY is not set in .env file")
+	}
+
+
+	peerIDs = append(peerIDs, PublicKeyToID(publicKeyHex))
 
 	// Translating public keys to uint34 IDs
 	for _, peer := range peers {
-		peerIDs = append(peerIDs, consensus.PublicKeyToID(peer.PublicKey))
+		peerIDs = append(peerIDs, PublicKeyToID(peer.PublicKey))
 	}
 
-	cfg := hbbft.Config{
-		// The number of nodes in the network.
-		N: 4,
-		// Identifier of this node.
-		ID: 101,
-		// Identifiers of the participating nodes.
-		Nodes: []uint64{67, 1, 99, 101},
-		// The prefered batch size. If BatchSize is empty, an ideal batch size will
-		// be choosen for you.
-		BatchSize: 100,
-	}
+	// Sort nodeIDs in ascending order
+    sort.Slice(peerIDs, func(i, j int) bool {
+        return peerIDs[i] < peerIDs[j]
+    })
 
-	fmt.Println(len(peerIDs))
-	hb = hbbft.NewHoneyBadger(cfg)
-	go hb.Start()
+	
 
-	for _, msg := range hb.Messages() {
-		messages <- message{node.id, msg}
-	}
+	for i, id := range peerIDs {
+        fmt.Printf("Node original ID %d assigned index ID %d\n", id, i)
+		nodeIDs = append(nodeIDs, uint64(i))
+    }
 
-	// go func() {
-	// 	for {
-	// 		// Check if there's any new output in the map
-	// 		for epoch, tx := range hb.Outputs() {
-	// 			fmt.Printf("batch for epoch %d: %v\n", epoch, tx)
-	// 		  }
-	// 	}
-	// }()
+	
+	go ListenOnPort(3000)
 
-	ListenOnPort(3000)
+	nodes = consensus.InitializeConsensus(len(nodeIDs), nodeIDs)
+
+	time.Sleep(2 * time.Hour)
 
 	return nil
 }
+
+
+
 
 // Function to check if an item is not in a list
 func isNotInList(item Peer, list []Peer) bool {
@@ -242,7 +266,7 @@ func handleConnection(conn net.Conn) {
 	// First we check if public key is in the room
 	peers := peerDetails.GetPeersInRoom(message.RoomID)
 	for _, peer := range peers {
-		log.Printf("Peers Public Key: %s\nMessage Public Key:%s\n", peer.PublicKey, message.PublicKey)
+		log.Printf("Peers Public Key: %s\nMessage Public Key: %s\n", peer.PublicKey, message.PublicKey)
 		if message.PublicKey == peer.PublicKey {
 			// Test cases: Intrusion rate, verification speed, timing
 			// Proper authorization
@@ -264,27 +288,39 @@ func handleConnection(conn net.Conn) {
 			case "chat":
 				log.Printf(message.Message)
 
+
 				// Doesent store message content (apart from sender, type, digital signature and timestamp)
 				tx := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp)
-				hb.AddTransaction(tx)
+				tx1 := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp)
+				tx2 := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp)
+				tx3 := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp)
 
-				switch t := message.payload.Payload.(type) {
-				case hbbft.HBMessage:
+				// var nodeIndex int
 
-					fmt.Println("HB_Mesage!!!!!!!!!!!!!")
-					if err := hb.HandleMessage(consensus.PublicKeyToID(message.PublicKey), t.Epoch, t.Payload.(*hbbft.ACSMessage)); err != nil {
-						log.Fatal(err)
-					}
+
+				// for i, node := range nodes {
+				// 	if node.ID == PublicKeyToNodeID(message.PublicKey){
+				// 		nodeIndex = i
+				// 	}
+				// }
+
+				//nodes[nodeIndex].HB.AddTransaction(tx)
+
+				nodes[0].HB.AddTransaction(tx)
+				nodes[1].HB.AddTransaction(tx1)
+				nodes[2].HB.AddTransaction(tx2)
+				nodes[3].HB.AddTransaction(tx3)
+
 				
-					// for _, msg := range hb.Messages() {
-					// 	messages <- message{consensus.PublicKeyToID(message.PublicKey), msg}
-					// }
-				}
+
+
+				// TODO: Adding them as transactions and syncing with consensus
+
+				
 				fmt.Println("Added Message as Transaction")
 			}
 
-			// TODO: Sending Messages, Saving to blockchain
-			// TODO: Adding them as transactions and syncing with consensus
+			
 			return
 		}
 	}
@@ -504,4 +540,35 @@ func StartYggdrasilServer() error {
 	ListenOnPort(3000)
 
 	return nil
+}
+
+
+
+// PublicKeyToID converts a hex-encoded ed25519 public key string into a deterministic uint64 ID.
+func PublicKeyToID(hexStr string) uint64 {
+	bytes, err := hex.DecodeString(hexStr)
+	if err != nil {
+		log.Fatalf("invalid hex string: %v", err)
+	}
+
+	if len(bytes) != ed25519.PublicKeySize {
+		log.Fatalf("invalid key length: expected %d, got %d", ed25519.PublicKeySize, len(bytes))
+	}
+
+	hash := sha256.Sum256(bytes)
+	return binary.LittleEndian.Uint64(hash[:8])
+}
+
+
+func PublicKeyToNodeID(hexStr string) uint64 {
+
+	ID := PublicKeyToID(hexStr)
+
+	for i, peerID := range peerIDs {
+		if ID == peerID {
+			return uint64(i)
+		}
+	}
+
+	return uint64(0)
 }

@@ -1,43 +1,108 @@
 package consensus
 
 import (
-
-	"crypto/ed25519"
+	"blockchain-p2p-messenger/src/blockchain"
 	"crypto/sha256"
-	"encoding/binary"
-	"encoding/hex"
+	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
+
 	"github.com/anthdm/hbbft"
 )
 
 const (
-	batchSize = 500
+	batchSize = 2
 	numCores  = 4
 )
 
-type Message struct {
-	From    uint64
-	Payload hbbft.MessageTuple
+type message struct {
+	from    uint64
+	payload hbbft.MessageTuple
+}
+
+// Server represents the local node.
+type Server struct {
+	ID          uint64
+	HB          *hbbft.HoneyBadger
+	transport   hbbft.Transport
+	rpcCh       <-chan hbbft.RPC
+	lock        sync.RWMutex
+	mempool     map[string]*Transaction
+	totalCommit int
+	start       time.Time
 }
 
 var (
 	txDelay  = (3 * time.Millisecond) / numCores
-	messages = make(chan Message, 1024*1024)
+	messages = make(chan message, 1024*1024)
 	relayCh  = make(chan *Transaction, 1024*1024)
 )
 
-func (t Transaction) Hash() []byte {
-	return []byte(t.digitalSignature)
+func InitializeConsensus(lenNodes int, peerIDs []uint64) []*Server {
+	var (
+		nodes = MakeNetwork(lenNodes, peerIDs)
+	)
+
+
+	go func(){
+		for _, node := range nodes {
+			go node.commitLoop()
+			go func(node *Server) {
+				
+				if err := node.HB.Start(); err != nil {
+					log.Fatal(err)
+				}
+				for _, msg := range node.HB.Messages() {
+					messages <- message{node.ID, msg}
+					
+				}
+
+			}(node)
+		}
+		
+		// handle the relayed transactions.
+		go func() {
+			for tx := range relayCh {
+				for _, node := range nodes {
+					node.addTransactions(tx)
+				}
+			}
+
+		}()
+
+		for {
+			msg := <-messages
+			node := nodes[msg.payload.To]
+			switch t := msg.payload.Payload.(type) {
+			case hbbft.HBMessage:
+				if err := node.HB.HandleMessage(msg.from, t.Epoch, t.Payload.(*hbbft.ACSMessage)); err != nil {
+					log.Fatal(err)
+				}
+
+				for _, msg := range node.HB.Messages() {
+					messages <- message{node.ID, msg}
+				}
+			}
+		}
+
+	}()
+
+	return nodes
 }
 
+func (t *Transaction) Hash() []byte {
+	data := fmt.Sprintf("%s:%s:%s:%d", t.SenderPublicKey, t.Typeofmessage, t.DigitalSignature, t.Timestamp)
+	hash := sha256.Sum256([]byte(data))
+	return hash[:]
+}
 
 type Transaction struct {
-	senderPublicKey string
-	typeofmessage string
-	digitalSignature string
-	timestamp uint64
+	SenderPublicKey  string
+	Typeofmessage    string
+	DigitalSignature string
+	Timestamp        uint64
 }
 
 func NewTransaction(senderPublicKey string, typeofmessage string, digitalSignature string, timestamp uint64) *Transaction {
@@ -45,71 +110,105 @@ func NewTransaction(senderPublicKey string, typeofmessage string, digitalSignatu
 }
 
 
-type Node struct {
-	ID          uint64
-	HB          *hbbft.HoneyBadger
-	Transport   hbbft.Transport
-	RpcCh       <-chan hbbft.RPC
-	Lock        sync.RWMutex
-	Mempool     map[string]*Transaction
-	TotalCommit int
-	Start       time.Time
-}
-
-
-
-
-// PublicKeyToID converts a hex-encoded ed25519 public key string into a deterministic uint64 ID.
-func PublicKeyToID(hexStr string) uint64 {
-	bytes, err := hex.DecodeString(hexStr)
-	if err != nil {
-		log.Fatalf("invalid hex string: %v", err)
-	}
-
-	if len(bytes) != ed25519.PublicKeySize {
-		log.Fatalf("invalid key length: expected %d, got %d", ed25519.PublicKeySize, len(bytes))
-	}
-
-	hash := sha256.Sum256(bytes)
-	return binary.LittleEndian.Uint64(hash[:8])
-}
-
-
-
-
-// func NewTransaction() *Transaction {
-// 	return &Transaction{rand.Uint64()}
-// }
-
-func NewNode(id uint64, tr hbbft.Transport, nodes []uint64) *Node {
+func NewServer(id uint64, tr hbbft.Transport, nodes []uint64) *Server {
 	hb := hbbft.NewHoneyBadger(hbbft.Config{
 		N:         len(nodes),
 		ID:        id,
 		Nodes:     nodes,
 		BatchSize: batchSize,
 	})
-	return &Node{
+	return &Server{
 		ID:        id,
-		Transport: tr,
+		transport: tr,
 		HB:        hb,
-		RpcCh:     tr.Consume(),
-		Mempool:   make(map[string]*Transaction),
-		Start:     time.Now(),
+		rpcCh:     tr.Consume(),
+		mempool:   make(map[string]*Transaction),
+		start:     time.Now(),
 	}
 }
 
-func MakeNetwork(n int, nodeIDs []uint64) []*Node {
-	transports := make([]hbbft.Transport, n)
-	nodes := make([]*Node, n)
-	for i := 0; i < n; i++ {
-		transports[i] = hbbft.NewLocalTransport(uint64(i))
-		nodes[i] = NewNode(uint64(i), transports[i], nodeIDs)
+// Simulate the delay of verifying a transaction.
+func (s *Server) VerifyTransaction(tx *Transaction) bool {
+	//time.Sleep(txDelay)
+	return true
+}
+
+func (s *Server) addTransactions(txx ...*Transaction) {
+	for _, tx := range txx {
+		if s.VerifyTransaction(tx) {
+			s.lock.Lock()
+			s.mempool[string(tx.Hash())] = tx
+			s.lock.Unlock()
+
+			// Add this transaction to the hbbft buffer.
+			s.HB.AddTransaction(tx)
+			// relay the transaction to all other nodes in the network.
+			go func() {
+				for i := 0; i < len(s.HB.Nodes); i++ {
+					if uint64(i) != s.HB.ID {
+						relayCh <- tx
+					}
+				}
+			}()
+		}
 	}
-	connectTransports(transports)
+}
+
+func (s *Server) commitLoop() {
+	timer := time.NewTicker(time.Second * 2)
+	n := 0
+	for {
+		select {
+		case <-timer.C:
+			out := s.HB.Outputs()
+			for _, txx := range out {
+				for _, tx := range txx {
+					hash := tx.Hash()
+					txSplit := strings.Split(fmt.Sprintf("%s", tx), " ")
+
+					blockchainStr := "SenderPublicKey: " + txSplit[0]  +", TypeOfMessage: "+ txSplit[1] + ", Timestamp: " + txSplit[2] + ", DigitalSignature: "  + txSplit[3]
+					blockchain.AddBlock(blockchainStr, message.RoomID)
+					fmt.Println(tx)
+					s.lock.Lock()
+					if _, ok := s.mempool[string(hash)]; !ok {
+						// Transaction is not in our mempool which implies we
+						// need to do verification.
+					}
+					n++
+					delete(s.mempool, string(hash))
+					s.lock.Unlock()
+				}
+			}
+			s.totalCommit += n
+			//delta := time.Since(s.start)
+			if s.ID == 1 {
+				// fmt.Println("")
+				// fmt.Println("===============================================")
+				// fmt.Printf("SERVER (%d)\n", s. ID)
+				// fmt.Printf("commited %d transactions over %v\n", s.totalCommit, delta)
+				// fmt.Printf("throughput %d TX/s\n", s.totalCommit/int(delta.Seconds()))
+				// fmt.Println("===============================================")
+				// fmt.Println("")
+			}
+			n = 0
+		}
+	}
+}
+
+
+
+func MakeNetwork(n int, nodeIDs []uint64) []*Server {
+	transports := make([]hbbft.Transport, n)
+	nodes := make([]*Server, n)
+	for i := 0; i < n; i++ {
+		transports[i] = hbbft.NewLocalTransport(nodeIDs[i])
+		nodes[i] = NewServer(nodeIDs[i], transports[i], nodeIDs)
+	}
+	ConnectTransports(transports)
 	return nodes
 }
 
-func connectTransports(tt []hbbft.Transport) {
+func ConnectTransports(tt []hbbft.Transport) {
 	for i := 0; i < len(tt); i++ {
 		for ii := 0; ii < len(tt); ii++ {
 			if ii == i {
@@ -134,18 +233,11 @@ func connectTransports(tt []hbbft.Transport) {
 // 	return buf
 // }
 
-
 // func InitConsensus(roomID string) (error, *hbbft.HoneyBadger) {
-
-	
-	
-	
-
 
 // 	// Any new request is processed as a transaction
 
 // 	//
-	
 
 // 	// Add Yggdrasil peers
 
@@ -218,10 +310,6 @@ func connectTransports(tt []hbbft.Transport) {
 // 	return nil, HB
 // }
 
-
-
-
-
 // func InitConsensus(lenNodes int, peerIDs []uint64 ) {
 // 	var (
 // 		nodes = MakeNetwork(lenNodes, peerIDs)
@@ -273,9 +361,6 @@ func connectTransports(tt []hbbft.Transport) {
 // 		raftNode.Apply([]byte(data), time.Second)
 // 	}
 // }
-
-
-
 
 // func StartConsensus() {
 // 	fmt.Println("Starting consensus engine")

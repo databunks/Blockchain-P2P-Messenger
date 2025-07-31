@@ -14,7 +14,7 @@ import (
 
 const (
 	lenNodes  = 4
-	batchSize = 500
+	batchSize = 2
 	numCores  = 4
 )
 
@@ -35,13 +35,17 @@ func main() {
 	)
 	for _, node := range nodes {
 		go node.run()
+		
 		go func(node *Server) {
+
 			if err := node.hb.Start(); err != nil {
 				log.Fatal(err)
 			}
 			for _, msg := range node.hb.Messages() {
 				messages <- message{node.id, msg}
+				
 			}
+
 		}(node)
 	}
 
@@ -52,6 +56,7 @@ func main() {
 				node.addTransactions(tx)
 			}
 		}
+		
 	}()
 
 	for {
@@ -63,6 +68,7 @@ func main() {
 				log.Fatal(err)
 			}
 			for _, msg := range node.hb.Messages() {
+				
 				messages <- message{node.id, msg}
 			}
 		}
