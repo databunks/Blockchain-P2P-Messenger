@@ -75,12 +75,15 @@ var peerIDs []uint64
 
 var nodeIDs []uint64
 
+var disableAuth bool
+
 func init() {
     gob.Register(&consensus.Transaction{})
 }
 
 
-func InitializeNetwork(roomID string) error {
+func InitializeNetwork(roomID string, disableAuthToggle bool) error {
+	disableAuth = disableAuthToggle
 
 	peers := peerDetails.GetPeersInRoom(roomID)
 
@@ -267,21 +270,23 @@ func handleConnection(conn net.Conn) {
 	peers := peerDetails.GetPeersInRoom(message.RoomID)
 	for _, peer := range peers {
 		log.Printf("Peers Public Key: %s\nMessage Public Key: %s\n", peer.PublicKey, message.PublicKey)
-		if message.PublicKey == peer.PublicKey {
+		if message.PublicKey == peer.PublicKey || disableAuth {
 			// Test cases: Intrusion rate, verification speed, timing
 			// Proper authorization
 			// Confidentialty: E2EE, tampering,
 			// Integrity of blockchain
 
-			// Validate the digital signature
-			if !VerifyMessageSignature([]byte(message.Message), message.DigitalSignature, peer.PublicKey) {
-				log.Printf("Invalid signature for message from %s\nMessage: %s\nSignature:%s", message.PublicKey, message.Message, message.DigitalSignature)
+			if (!disableAuth){
+				// Validate the digital signature
+				if !VerifyMessageSignature([]byte(message.Message), message.DigitalSignature, peer.PublicKey) {
+					log.Printf("Invalid signature for message from %s\nMessage: %s\nSignature:%s", message.PublicKey, message.Message, message.DigitalSignature)
 
-				responseMessage := "Invalid Digital Signature!!"
-				conn.Write([]byte(responseMessage)) // Send response to the client
-				return
+					responseMessage := "Invalid Digital Signature!!"
+					conn.Write([]byte(responseMessage)) // Send response to the client
+					return
+				}
 			}
-
+			
 			log.Printf("Authenticated!")
 
 			switch message.Type {

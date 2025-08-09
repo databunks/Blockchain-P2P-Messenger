@@ -2,6 +2,7 @@ package consensustests
 
 import (
 	"blockchain-p2p-messenger/src/derivationFunctions"
+	"blockchain-p2p-messenger/src/network"
 	"blockchain-p2p-messenger/src/peerDetails"
 )
 
@@ -20,7 +21,9 @@ func RunTest1(){
 	peerDetails.AddPeer(publicKey2_VM2, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey2_VM2), false, roomID)
 	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), false, roomID)
 
-	
+	network.InitializeNetwork(roomID, true)
+
+
 }
 
 
