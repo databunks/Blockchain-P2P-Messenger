@@ -290,26 +290,25 @@ func handleConnection(conn net.Conn) {
 
 
 				// Doesent store message content (apart from sender, type, digital signature and timestamp)
-				tx := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp)
-				tx1 := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp)
-				tx2 := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp)
-				tx3 := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp)
+				tx := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp, message.RoomID)
+				// tx1 := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp, message.RoomID)
+				// tx2 := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp, message.RoomID)
+				// tx3 := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp, message.RoomID)
 
-				// var nodeIndex int
+				var nodeIndex int
 
+				for i, node := range nodes {
+					if node.ID == PublicKeyToNodeID(message.PublicKey){
+						nodeIndex = i
+					}
+				}
 
-				// for i, node := range nodes {
-				// 	if node.ID == PublicKeyToNodeID(message.PublicKey){
-				// 		nodeIndex = i
-				// 	}
-				// }
+				nodes[nodeIndex].HB.AddTransaction(tx)
 
-				//nodes[nodeIndex].HB.AddTransaction(tx)
-
-				nodes[0].HB.AddTransaction(tx)
-				nodes[1].HB.AddTransaction(tx1)
-				nodes[2].HB.AddTransaction(tx2)
-				nodes[3].HB.AddTransaction(tx3)
+				// nodes[0].HB.AddTransaction(tx)
+				// nodes[1].HB.AddTransaction(tx1)
+				// nodes[2].HB.AddTransaction(tx2)
+				// nodes[3].HB.AddTransaction(tx3)
 
 				
 

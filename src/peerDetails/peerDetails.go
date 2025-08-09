@@ -78,13 +78,13 @@ func GetPeersInRoom(roomID string) []Peer {
 				peers := strings.SplitN(currentElement, " ", 3)
 
 				isAdmin, err := strconv.ParseBool(peers[2])
-				ipaddr, err_2 := derivationFunctions.DeriveIPAddressFromPublicKey(peers[0])
+				ipaddr := derivationFunctions.DeriveIPAddressFromPublicKey(peers[0])
 				
 				roomPeers = append(roomPeers, Peer{PublicKey: peers[0], IP: ipaddr, IsAdmin: isAdmin})
 
 
 				if err != nil {
-					fmt.Println("Error:", err, err_2)
+					fmt.Println("Error:", err, )
 				}
 			}
 			

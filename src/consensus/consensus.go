@@ -103,10 +103,11 @@ type Transaction struct {
 	Typeofmessage    string
 	DigitalSignature string
 	Timestamp        uint64
+	RoomID 			 string
 }
 
-func NewTransaction(senderPublicKey string, typeofmessage string, digitalSignature string, timestamp uint64) *Transaction {
-	return &Transaction{senderPublicKey, typeofmessage, digitalSignature, timestamp}
+func NewTransaction(senderPublicKey string, typeofmessage string, digitalSignature string, timestamp uint64, roomID string) *Transaction {
+	return &Transaction{senderPublicKey, typeofmessage, digitalSignature, timestamp, roomID}
 }
 
 
@@ -164,10 +165,24 @@ func (s *Server) commitLoop() {
 			for _, txx := range out {
 				for _, tx := range txx {
 					hash := tx.Hash()
-					txSplit := strings.Split(fmt.Sprintf("%s", tx), " ")
 
-					blockchainStr := "SenderPublicKey: " + txSplit[0]  +", TypeOfMessage: "+ txSplit[1] + ", Timestamp: " + txSplit[2] + ", DigitalSignature: "  + txSplit[3]
-					blockchain.AddBlock(blockchainStr, message.RoomID)
+					txString := fmt.Sprint("%s", tx)
+					txString = strings.Split(txString, "%s")[1]
+					removeChars := "&{}"
+
+					txString = strings.Map(func(r rune) rune {
+						if strings.ContainsRune(removeChars, r) {
+							return -1 // skip this rune
+						}
+						return r
+					}, txString)
+
+			
+					txSplit := strings.Split(txString, " ")
+
+					blockchainStr := "MESSAGE_ADDED{SenderPublicKey: " + txSplit[0]  +", TypeOfMessage: "+ txSplit[1] + ", DigitalSignature: " + txSplit[2] + ", Timestamp: "  + txSplit[3] + ", RoomID: " + txSplit[4] +"}"
+					blockchain.AddBlock(blockchainStr, txSplit[4])
+
 					fmt.Println(tx)
 					s.lock.Lock()
 					if _, ok := s.mempool[string(hash)]; !ok {
