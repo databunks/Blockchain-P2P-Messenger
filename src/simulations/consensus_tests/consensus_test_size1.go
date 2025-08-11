@@ -23,6 +23,8 @@ func RunTest1(){
 
 	network.InitializeNetwork(roomID, true)
 
+	//network.SendCustomMessage()
+
 
 }
 
