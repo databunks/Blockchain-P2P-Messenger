@@ -4,18 +4,19 @@ import (
 	"blockchain-p2p-messenger/src/consensus"
 	"blockchain-p2p-messenger/src/peerDetails"
 	"crypto/ed25519"
-	"math/rand"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"os"
 	"os/exec"
 	"sync"
 	"time"
+
 	"github.com/anthdm/hbbft"
 	"github.com/joho/godotenv"
 )
@@ -159,21 +160,49 @@ func InitializeNetwork(roomID string) error {
 	hb = hbbft.NewHoneyBadger(cfg)
 	go hb.Start()
 
-	// Initialize gossip protocol
+	// Initialize gossip protocol with Yggdrasil peers
 	net := &Network{
 		nodeID:         101,
 		gossipPeers:    make(map[uint64]*GossipNode),
 		messageHistory: make(map[string]bool),
 	}
 
-	// Add peers to gossip network
+	// Add Yggdrasil peers to gossip network
+	// Get actual Yggdrasil peers (not just room peers)
+	yggdrasilPeers, err := GetYggdrasilPeers("unique")
+	if err != nil {
+		fmt.Printf("Warning: Could not get Yggdrasil peers: %v\n", err)
+	} else {
+		fmt.Printf("Found %d Yggdrasil peers for gossip network\n", len(yggdrasilPeers))
+
+		for _, yggPeer := range yggdrasilPeers {
+			// Convert Yggdrasil peer key to uint64 ID
+			peerID := PublicKeyToID(yggPeer.Key)
+
+			// Add to gossip network
+			net.gossipPeers[peerID] = &GossipNode{
+				ID:       peerID,
+				Address:  yggPeer.Address, // Use Yggdrasil IP address
+				LastSeen: time.Now(),
+				IsAlive:  true,
+			}
+
+			fmt.Printf("Added Yggdrasil peer to gossip network: ID=%d, Address=%s, Key=%s\n",
+				peerID, yggPeer.Address, yggPeer.Key)
+		}
+	}
+
+	// Also add room peers to gossip network (for room-specific messaging)
 	for _, peer := range peers {
 		peerID := PublicKeyToID(peer.PublicKey)
-		net.gossipPeers[peerID] = &GossipNode{
-			ID:       peerID,
-			Address:  peer.IP,
-			LastSeen: time.Now(),
-			IsAlive:  true,
+		if _, exists := net.gossipPeers[peerID]; !exists {
+			net.gossipPeers[peerID] = &GossipNode{
+				ID:       peerID,
+				Address:  peer.IP,
+				LastSeen: time.Now(),
+				IsAlive:  true,
+			}
+			fmt.Printf("Added room peer to gossip network: ID=%d, Address=%s\n", peerID, peer.IP)
 		}
 	}
 
@@ -739,7 +768,6 @@ func StartYggdrasilServer() error {
 	ListenOnPort(3000)
 	return nil
 }
-
 
 // PublicKeyToID converts a hex-encoded ed25519 public key string into a deterministic uint64 ID.
 func PublicKeyToID(hexStr string) uint64 {
