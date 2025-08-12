@@ -1,6 +1,7 @@
 package gossipnetwork
 
 import (
+	"blockchain-p2p-messenger/src/peerDetails"
 	"crypto/ed25519"
 	cryptorand "crypto/rand"
 	"crypto/sha256"
@@ -11,23 +12,28 @@ import (
 	"log"
 	"math/rand"
 	"net"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 // Gossip Protocol Types
 type GossipMessage struct {
-	Type      string      `json:"type"`
-	Category  string      `json:"category"` // "broadcast", "direct", "room_specific"
-	Data      interface{} `json:"data"`
-	OriginID  uint64      `json:"origin_id"`
-	TargetID  uint64      `json:"target_id"`
-	RoomID    string      `json:"room_id"`
-	MessageID string      `json:"message_id"`
-	TTL       int         `json:"ttl"`
-	Timestamp int64       `json:"timestamp"`
+	PublicKey        string      `json:"public_key"`
+	Type             string      `json:"type"`
+	Category         string      `json:"category"` // "broadcast", "direct", "room_specific"
+	Data             interface{} `json:"data"`
+	OriginID         uint64      `json:"origin_id"`
+	TargetID         uint64      `json:"target_id"`
+	RoomID           string      `json:"room_id"`
+	MessageID        string      `json:"message_id"`
+	TTL              int         `json:"ttl"`
+	Timestamp        uint64      `json:"timestamp"`
+	DigitalSignature string      `json:"digital_signature"`
 }
 
 type GossipNode struct {
@@ -79,10 +85,18 @@ type GossipNetwork struct {
 	conns     map[string]net.Conn
 	connMutex sync.RWMutex
 	listener  net.Listener
+
+	// Authentication
+	disableAuth bool
+	privateKey  ed25519.PrivateKey
+	publicKey   ed25519.PublicKey
 }
 
 // NewGossipNetwork creates a new integrated gossip network
 func NewGossipNetwork(nodeID uint64, roomID string, port uint64) *GossipNetwork {
+	// Load private key for authentication
+	privateKey, publicKey := loadKeys()
+
 	return &GossipNetwork{
 		nodeID:         nodeID,
 		roomID:         roomID,
@@ -90,11 +104,105 @@ func NewGossipNetwork(nodeID uint64, roomID string, port uint64) *GossipNetwork 
 		gossipPeers:    make(map[uint64]*GossipNode),
 		messageHistory: make(map[string]bool),
 		conns:          make(map[string]net.Conn),
+		privateKey:     privateKey,
+		publicKey:      publicKey,
+		disableAuth:    false, // Set to true to disable authentication
 	}
 }
 
+// loadKeys loads the private and public keys from keydetails.env
+func loadKeys() (ed25519.PrivateKey, ed25519.PublicKey) {
+	// Load environment variables from .env file
+	err := godotenv.Load("keydetails.env")
+	if err != nil {
+		log.Fatalf("Error loading .env file: %v", err)
+	}
+
+	// Get the ED25519 private key from the environment variable
+	privateKeyHex := os.Getenv("PRIVATE_KEY")
+	if privateKeyHex == "" {
+		log.Fatal("PRIVATE_KEY is not set in keydetails.env file")
+	}
+
+	// Convert the hex string to bytes
+	privateKeyBytes, err := hex.DecodeString(privateKeyHex)
+	if err != nil {
+		log.Fatal("Failed to decode private key:", err)
+	}
+
+	// Ensure the private key is the correct length (32 bytes for ED25519)
+	if len(privateKeyBytes) != ed25519.PrivateKeySize {
+		log.Fatal("Invalid private key size, expected 32 bytes")
+	}
+
+	// Generate the public key from the private key
+	privateKey := ed25519.PrivateKey(privateKeyBytes)
+	publicKey := privateKey.Public().(ed25519.PublicKey)
+
+	return privateKey, publicKey
+}
+
+// SignMessage signs a message with the private key and returns the signature
+func (gn *GossipNetwork) SignMessage(message []byte) []byte {
+	signature := ed25519.Sign(gn.privateKey, message)
+	return signature
+}
+
+// VerifyMessageSignature checks if the message was signed correctly using the sender's public key
+func (gn *GossipNetwork) VerifyMessageSignature(messageContent []byte, signatureHex string, publicKeyHex string) bool {
+	// Decode the hex-encoded public key
+	publicKeyBytes, err := hex.DecodeString(publicKeyHex)
+	if err != nil {
+		log.Printf("Error decoding public key: %v", err)
+		return false
+	}
+
+	// Decode the hex-encoded signature
+	signatureBytes, err := hex.DecodeString(signatureHex)
+	if err != nil {
+		log.Printf("Error decoding signature: %v", err)
+		return false
+	}
+
+	// Check signature validity using ed25519
+	isValid := ed25519.Verify(ed25519.PublicKey(publicKeyBytes), messageContent, signatureBytes)
+
+	if !isValid {
+		log.Println("Signature verification failed")
+	}
+
+	return isValid
+}
+
+// authenticateMessage checks if the message sender is authorized for the room
+func (gn *GossipNetwork) authenticateMessage(msg GossipMessage) bool {
+	if gn.disableAuth {
+		return true
+	}
+
+	// Check if public key is in the room
+	peers := peerDetails.GetPeersInRoom(msg.RoomID)
+	for _, peer := range peers {
+		if msg.PublicKey == peer.PublicKey {
+			// Validate the digital signature
+			messageBytes := []byte(fmt.Sprintf("%v", msg.Data))
+			if !gn.VerifyMessageSignature(messageBytes, msg.DigitalSignature, peer.PublicKey) {
+				log.Printf("Invalid signature for message from %s\nMessage: %v\nSignature: %s",
+					msg.PublicKey, msg.Data, msg.DigitalSignature)
+				return false
+			}
+
+			log.Printf("Message authenticated from %s", msg.PublicKey)
+			return true
+		}
+	}
+
+	log.Printf("Public key %s not found in room %s allow list", msg.PublicKey, msg.RoomID)
+	return false
+}
+
 // InitializeGossipNetwork sets up the complete gossip network
-func InitializeGossipNetwork(roomID string, port uint64) error {
+func InitializeGossipNetwork(roomID string, port uint64) (*GossipNetwork, error) {
 	fmt.Println("Initializing integrated gossip network...")
 
 	// Create gossip network instance
@@ -103,7 +211,7 @@ func InitializeGossipNetwork(roomID string, port uint64) error {
 	// Get Yggdrasil peers
 	yggdrasilPeers, err := gossipNet.GetYggdrasilPeers("unique")
 	if err != nil {
-		return fmt.Errorf("failed to get Yggdrasil peers: %v", err)
+		return nil, fmt.Errorf("failed to get Yggdrasil peers: %v", err)
 	}
 
 	fmt.Printf("Found %d Yggdrasil peers for gossip network\n", len(yggdrasilPeers))
@@ -128,7 +236,7 @@ func InitializeGossipNetwork(roomID string, port uint64) error {
 	// Start the integrated network
 	gossipNet.Start()
 
-	return nil
+	return gossipNet, nil // Return the instance
 }
 
 // Start initializes and starts the gossip network
@@ -169,6 +277,18 @@ func (gn *GossipNetwork) startListener() {
 	}
 }
 
+// DisableAuthentication turns off message authentication (for testing)
+func (gn *GossipNetwork) DisableAuthentication() {
+	gn.disableAuth = true
+	fmt.Println("Authentication disabled for gossip network")
+}
+
+// EnableAuthentication turns on message authentication
+func (gn *GossipNetwork) EnableAuthentication() {
+	gn.disableAuth = false
+	fmt.Println("Authentication enabled for gossip network")
+}
+
 // handleConnection handles incoming network connections
 func (gn *GossipNetwork) handleConnection(conn net.Conn) {
 	defer conn.Close()
@@ -189,6 +309,8 @@ func (gn *GossipNetwork) handleConnection(conn net.Conn) {
 	if err := json.Unmarshal(buffer[:n], &gossipMsg); err == nil && gossipMsg.Type != "" {
 		// This is a gossip message
 		fmt.Printf("Received gossip message: %+v\n", gossipMsg)
+
+		// Handle the message (authentication happens inside HandleGossipMessage)
 		gn.HandleGossipMessage(gossipMsg)
 		return
 	}
@@ -292,15 +414,28 @@ func (gn *GossipNetwork) selectRandomPeers(peers []*GossipNode, count int) []*Go
 
 // sendHeartbeat sends a heartbeat message to a peer
 func (gn *GossipNetwork) sendHeartbeat(peer *GossipNode) {
+	// Create message data
+	messageData := "Hello from gossip protocol"
+	messageBytes := []byte(messageData)
+
+	// Sign the message
+	signature := gn.SignMessage(messageBytes)
+	signatureHex := hex.EncodeToString(signature)
+
+	// Get our public key as hex
+	publicKeyHex := hex.EncodeToString(gn.publicKey)
+
 	msg := GossipMessage{
-		Type:      "heartbeat",
-		Category:  "broadcast",
-		Data:      "Hello from gossip protocol",
-		OriginID:  gn.nodeID,
-		TargetID:  0,
-		MessageID: generateMessageID(),
-		TTL:       10,
-		Timestamp: time.Now().Unix(),
+		PublicKey:        publicKeyHex,
+		Type:             "heartbeat",
+		Category:         "broadcast",
+		Data:             messageData,
+		OriginID:         gn.nodeID,
+		TargetID:         0,
+		MessageID:        generateMessageID(),
+		TTL:              10,
+		Timestamp:        uint64(time.Now().Unix()),
+		DigitalSignature: signatureHex,
 	}
 
 	err := gn.SendGossipMessage(peer, msg)
@@ -319,6 +454,12 @@ func (gn *GossipNetwork) HandleGossipMessage(msg GossipMessage) {
 	}
 	gn.messageHistory[msg.MessageID] = true
 	gn.gossipMutex.Unlock()
+
+	// Authenticate the message
+	if !gn.authenticateMessage(msg) {
+		log.Printf("Message authentication failed for message ID: %s", msg.MessageID)
+		return
+	}
 
 	// Determine if we should process this message
 	shouldProcess := gn.shouldProcessMessage(msg)
@@ -375,6 +516,38 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 	}
 }
 
+// healthCheckLoop monitors peer health
+func (gn *GossipNetwork) healthCheckLoop() {
+	ticker := time.NewTicker(30 * time.Second) // Changed from 15 to 30 seconds
+	for range ticker.C {
+		gn.checkPeerHealth()
+	}
+}
+
+// checkPeerHealth checks if peers are still alive
+func (gn *GossipNetwork) checkPeerHealth() {
+	gn.gossipMutex.Lock()
+	defer gn.gossipMutex.Unlock()
+
+	now := time.Now()
+	deadCount := 0
+	aliveCount := 0
+
+	for id, peer := range gn.gossipPeers {
+		// Increase timeout from 60 seconds to 5 minutes
+		if now.Sub(peer.LastSeen) > 5*60*time.Second {
+			peer.IsAlive = false
+			deadCount++
+			fmt.Printf("Peer %d marked as dead (last seen: %v ago)\n", id, now.Sub(peer.LastSeen))
+		} else {
+			aliveCount++
+		}
+	}
+
+	fmt.Printf("Peer health check: %d alive, %d dead, total: %d\n", aliveCount, deadCount, len(gn.gossipPeers))
+}
+
+// updatePeerLastSeen updates peer last seen time
 func (gn *GossipNetwork) updatePeerLastSeen(peerID uint64) {
 	gn.gossipMutex.Lock()
 	defer gn.gossipMutex.Unlock()
@@ -382,9 +555,25 @@ func (gn *GossipNetwork) updatePeerLastSeen(peerID uint64) {
 	if peer, exists := gn.gossipPeers[peerID]; exists {
 		peer.LastSeen = time.Now()
 		peer.IsAlive = true
+		fmt.Printf("Updated peer %d last seen time\n", peerID)
 	}
 }
 
+// Add a method to manually refresh peer health
+func (gn *GossipNetwork) RefreshPeerHealth() {
+	gn.gossipMutex.Lock()
+	defer gn.gossipMutex.Unlock()
+
+	now := time.Now()
+	for _, peer := range gn.gossipPeers {
+		// Mark all peers as alive and update their last seen time
+		peer.IsAlive = true
+		peer.LastSeen = now
+	}
+	fmt.Printf("Refreshed health for all %d peers\n", len(gn.gossipPeers))
+}
+
+// handleConsensusGossip handles consensus messages received via gossip
 func (gn *GossipNetwork) handleConsensusGossip(msg GossipMessage) {
 	// Handle consensus messages received via gossip
 	fmt.Printf("Handling consensus gossip message: %+v\n", msg)
@@ -411,39 +600,31 @@ func (gn *GossipNetwork) forwardGossipMessage(msg GossipMessage) {
 	}
 }
 
-// healthCheckLoop monitors peer health
-func (gn *GossipNetwork) healthCheckLoop() {
-	ticker := time.NewTicker(15 * time.Second)
-	for range ticker.C {
-		gn.checkPeerHealth()
-	}
-}
-
-// checkPeerHealth checks if peers are still alive
-func (gn *GossipNetwork) checkPeerHealth() {
-	gn.gossipMutex.Lock()
-	defer gn.gossipMutex.Unlock()
-
-	for id, peer := range gn.gossipPeers {
-		if time.Since(peer.LastSeen) > 60*time.Second {
-			peer.IsAlive = false
-			fmt.Printf("Peer %d marked as dead\n", id)
-		}
-	}
-}
-
 // GossipMessage sends a custom message to the network
 func (gn *GossipNetwork) GossipMessage(msgType, category string, data interface{}, targetID uint64, roomID string) {
+	// Create message data
+	messageData := fmt.Sprintf("%v", data)
+	messageBytes := []byte(messageData)
+
+	// Sign the message
+	signature := gn.SignMessage(messageBytes)
+	signatureHex := hex.EncodeToString(signature)
+
+	// Get our public key as hex
+	publicKeyHex := hex.EncodeToString(gn.publicKey)
+
 	gossipMsg := GossipMessage{
-		Type:      msgType,
-		Category:  category,
-		Data:      data,
-		OriginID:  gn.nodeID,
-		TargetID:  targetID,
-		RoomID:    roomID,
-		MessageID: generateMessageID(),
-		TTL:       10,
-		Timestamp: time.Now().Unix(),
+		PublicKey:        publicKeyHex,
+		Type:             msgType,
+		Category:         category,
+		Data:             data,
+		OriginID:         gn.nodeID,
+		TargetID:         targetID,
+		RoomID:           roomID,
+		MessageID:        generateMessageID(),
+		TTL:              10,
+		Timestamp:        uint64(time.Now().Unix()),
+		DigitalSignature: signatureHex,
 	}
 
 	// Add to our own processing first
