@@ -3,6 +3,7 @@ package main
 import (
 	gossipnetwork "blockchain-p2p-messenger/src/network_gossip"
 	"blockchain-p2p-messenger/src/peerDetails"
+	"time"
 )
 
 //"blockchain-p2p-messenger/src/genkeys"
@@ -35,7 +36,10 @@ func main() {
 
 	// network.InitializeNetwork("room-xyz-987")
 
-	gossipnetwork.InitializeNetwork("room-xyz-987")
+	// gossipnetwork.InitializeNetwork("room-xyz-987")
+
+	gossipnetwork.InitializeGossipNetwork("room-xyz-987", 3000)
+	time.Sleep(time.Hour * 1000)
 
 	//network.SendMessage("This is joe biden speaking", roomID, 3000, "chat")
 	//network.ListenOnPort(3000)

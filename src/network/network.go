@@ -17,7 +17,6 @@ import (
 	"sort"
 	"sync"
 	"time"
-
 	"github.com/joho/godotenv"
 )
 
@@ -59,10 +58,6 @@ type YggdrasilNodeInfo struct {
 	RoutingEntries int    `json:"routing_entries"`
 	Subnet         string `json:"subnet"`
 }
-
-
-
-
 
 
 var nodes []*consensus.Server
