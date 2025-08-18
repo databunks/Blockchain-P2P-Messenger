@@ -500,6 +500,9 @@ func (gn *GossipNetwork) HandleGossipMessage(msg GossipMessage) {
 		return
 	}
 
+	fmt.Println("Nigga should process:")
+	fmt.Println(gn.nodeID)
+	fmt.Println(msg.TargetID)
 	// Determine if we should process this message
 	shouldProcess := gn.shouldProcessMessage(msg)
 
@@ -510,7 +513,7 @@ func (gn *GossipNetwork) HandleGossipMessage(msg GossipMessage) {
 	}
 
 	// Always forward if TTL > 0 (unless it was meant only for us)
-	if msg.TTL > 0 { // && msg.Category != "direct" {
+	if msg.TTL > 0 && msg.Category != "direct" {
 		msg.TTL--
 		gn.forwardGossipMessage(msg)
 	}
@@ -549,7 +552,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 
 
 		// sending acknowledgement message back to peer
-		gn.GossipMessage("ack", "direct", msg, msg.OriginID, msg.RoomID, "")
+		gn.GossipMessage("ack", "broadcast", msg, msg.OriginID, msg.RoomID, "")
 
 		// Doesent store message content (apart from sender, type, digital signature and timestamp)
 		tx := consensus.NewTransaction(msg.PublicKey, "chat", msg.DigitalSignature, msg.Timestamp, msg.RoomID)
