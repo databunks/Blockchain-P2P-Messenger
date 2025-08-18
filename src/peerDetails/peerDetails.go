@@ -39,13 +39,13 @@ func AddPeer(publicKey string, ip string, isAdmin bool, roomID string) error {
 	fmt.Printf("Added peer to memory. Current peers: %+v\n", peers[roomID])
 
 	peerList := "["
-	for i := 0; i < len(peers[roomID]); i++{
+	for i := 0; i < len(peers[roomID]); i++ {
 		peerList += "{"
 		peerList += peers[roomID][i].PublicKey
 		peerList += " " + peers[roomID][i].IP
 		peerList += " " + fmt.Sprintf("%v", peers[roomID][i].IsAdmin)
 		peerList += "}"
-		if (i != len(peers[roomID]) - 1){
+		if i != len(peers[roomID])-1 {
 			peerList += ", "
 		}
 	}
@@ -54,7 +54,6 @@ func AddPeer(publicKey string, ip string, isAdmin bool, roomID string) error {
 
 	blockchain.AddBlock(fmt.Sprintf("PEER_ADDED$%s", peerList), roomID)
 
-		
 	return nil
 	// return savePeersToFile(roomID)
 }
@@ -72,25 +71,23 @@ func GetPeersInRoom(roomID string) []Peer {
 			dataArray := strings.SplitN(block.Data, "$", 2)
 			dataArray = strings.SplitN(dataArray[1], "{", -1)
 
-			for i := 1; i < len(dataArray); i++{
+			for i := 1; i < len(dataArray); i++ {
 
 				var currentElement = strings.SplitN(dataArray[i], "}", 2)[0]
 				peers := strings.SplitN(currentElement, " ", 3)
 
 				isAdmin, err := strconv.ParseBool(peers[2])
 				ipaddr := derivationFunctions.DeriveIPAddressFromPublicKey(peers[0])
-				
+
 				roomPeers = append(roomPeers, Peer{PublicKey: peers[0], IP: ipaddr, IsAdmin: isAdmin})
 
-
 				if err != nil {
-					fmt.Println("Error:", err, )
+					fmt.Println("Error:", err)
 				}
 			}
-			
 
 			// if err := json.Unmarshal([]byte(data[1]), &roomPeers); err != nil {
-				
+
 			// 	fmt.Println("Failed to unmarshal peer list:", err)
 			// 	break
 			// }
@@ -105,7 +102,6 @@ func GetPeersInRoom(roomID string) []Peer {
 	peers[roomID] = []Peer{}
 	return peers[roomID]
 }
-
 
 // RemovePeer removes a peer by public key from a specific room
 func RemovePeer(publicKey string, roomID string) error {
@@ -143,6 +139,3 @@ func RemovePeer(publicKey string, roomID string) error {
 
 	return nil
 }
-
-
-

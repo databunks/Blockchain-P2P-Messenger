@@ -1,11 +1,13 @@
 package gossipnetwork
 
 import (
+	"blockchain-p2p-messenger/src/consensus"
 	"blockchain-p2p-messenger/src/peerDetails"
 	"crypto/ed25519"
 	cryptorand "crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/gob"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -14,6 +16,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -92,6 +95,18 @@ type GossipNetwork struct {
 	publicKey   ed25519.PublicKey
 }
 
+var nodes []*consensus.Server
+
+var peerIDs []uint64
+
+var nodeIDs []uint64
+
+var isCensorshipAttackerNode bool
+
+func init() {
+	gob.Register(&consensus.Transaction{})
+}
+
 // NewGossipNetwork creates a new integrated gossip network
 func NewGossipNetwork(nodeID uint64, roomID string, port uint64) *GossipNetwork {
 	// Load private key for authentication
@@ -113,7 +128,7 @@ func NewGossipNetwork(nodeID uint64, roomID string, port uint64) *GossipNetwork 
 // loadKeys loads the private and public keys from keydetails.env
 func loadKeys() (ed25519.PrivateKey, ed25519.PublicKey) {
 	// Load environment variables from .env file
-	err := godotenv.Load("keydetails.env")
+	err := godotenv.Load("../keydetails.env")
 	if err != nil {
 		log.Fatalf("Error loading .env file: %v", err)
 	}
@@ -202,7 +217,9 @@ func (gn *GossipNetwork) authenticateMessage(msg GossipMessage) bool {
 }
 
 // InitializeGossipNetwork sets up the complete gossip network
-func InitializeGossipNetwork(roomID string, port uint64) (*GossipNetwork, error) {
+func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool) (*GossipNetwork, error) {
+	isCensorshipAttackerNode = toggleAttacker
+
 	fmt.Println("Initializing integrated gossip network...")
 
 	// Create gossip network instance
@@ -233,6 +250,25 @@ func InitializeGossipNetwork(roomID string, port uint64) (*GossipNetwork, error)
 			peerID, yggPeer.Address, yggPeer.Key)
 	}
 
+	peers := peerDetails.GetPeersInRoom(roomID)
+
+	// Translating public keys to uint34 IDs
+	for _, peer := range peers {
+		peerIDs = append(peerIDs, PublicKeyToID(peer.PublicKey))
+	}
+
+	// Sort nodeIDs in ascending order
+	sort.Slice(peerIDs, func(i, j int) bool {
+		return peerIDs[i] < peerIDs[j]
+	})
+
+	for i, id := range peerIDs {
+		fmt.Printf("Node original ID %d assigned index ID %d\n", id, i)
+		nodeIDs = append(nodeIDs, uint64(i))
+	}
+
+	nodes = consensus.InitializeConsensus(len(nodeIDs), nodeIDs)
+
 	// Start the integrated network
 	gossipNet.Start()
 
@@ -242,8 +278,8 @@ func InitializeGossipNetwork(roomID string, port uint64) (*GossipNetwork, error)
 // Start initializes and starts the gossip network
 func (gn *GossipNetwork) Start() {
 	// Start gossip protocol
-	go gn.gossipLoop()
-	go gn.healthCheckLoop()
+	// go gn.gossipLoop()
+	// go gn.healthCheckLoop()
 
 	// Start network listener
 	go gn.startListener()
@@ -357,37 +393,38 @@ func (gn *GossipNetwork) SendGossipMessage(peer *GossipNode, msg GossipMessage) 
 // Gossip Protocol Functions
 
 // gossipLoop is the main gossip loop
-func (gn *GossipNetwork) gossipLoop() {
-	ticker := time.NewTicker(5 * time.Second)
-	for range ticker.C {
-		gn.gossipRandom()
-	}
-}
+// func (gn *GossipNetwork) gossipLoop() {
+// 	ticker := time.NewTicker(5 * time.Second)
+// 	for range ticker.C {
+// 		gn.gossipRandom()
+// 	}
+// }
 
 // gossipRandom randomly gossips to subset of peers
-func (gn *GossipNetwork) gossipRandom() {
-	gn.gossipMutex.RLock()
-	peers := make([]*GossipNode, 0, len(gn.gossipPeers))
-	for _, peer := range gn.gossipPeers {
-		if peer.IsAlive {
-			peers = append(peers, peer)
-		}
-	}
-	gn.gossipMutex.RUnlock()
+// func (gn *GossipNetwork) gossipRandom() {
+// 	gn.gossipMutex.RLock()
+// 	peers := make([]*GossipNode, 0, len(gn.gossipPeers))
+// 	for _, peer := range gn.gossipPeers {
+// 		if peer.IsAlive {
+// 			peers = append(peers, peer)
+// 		}
+// 	}
 
-	if len(peers) == 0 {
-		return
-	}
+// 	gn.gossipMutex.RUnlock()
 
-	// Select random subset (typically 2-3 peers)
-	numToGossip := min(2, len(peers))
-	selected := gn.selectRandomPeers(peers, numToGossip)
+// 	if len(peers) == 0 {
+// 		return
+// 	}
 
-	// Gossip heartbeat messages
-	for _, peer := range selected {
-		gn.sendHeartbeat(peer)
-	}
-}
+// 	// Select random subset (typically 2-3 peers)
+// 	numToGossip := min(2, len(peers))
+// 	selected := gn.selectRandomPeers(peers, numToGossip)
+
+// 	// Gossip heartbeat messages
+// 	for _, peer := range selected {
+// 		gn.sendHeartbeat(peer)
+// 	}
+// }
 
 // selectRandomPeers selects a random subset of peers
 func (gn *GossipNetwork) selectRandomPeers(peers []*GossipNode, count int) []*GossipNode {
@@ -412,37 +449,38 @@ func (gn *GossipNetwork) selectRandomPeers(peers []*GossipNode, count int) []*Go
 	return selected
 }
 
-// sendHeartbeat sends a heartbeat message to a peer
-func (gn *GossipNetwork) sendHeartbeat(peer *GossipNode) {
-	// Create message data
-	messageData := "Hello from gossip protocol"
-	messageBytes := []byte(messageData)
+// // sendHeartbeat sends a heartbeat message to a peer
+// func (gn *GossipNetwork) sendHeartbeat(peer *GossipNode) {
+// 	// Create message data
+// 	messageData := "Hello from gossip protocol"
+// 	messageBytes := []byte(messageData)
 
-	// Sign the message
-	signature := gn.SignMessage(messageBytes)
-	signatureHex := hex.EncodeToString(signature)
+// 	// Sign the message
+// 	signature := gn.SignMessage(messageBytes)
+// 	signatureHex := hex.EncodeToString(signature)
 
-	// Get our public key as hex
-	publicKeyHex := hex.EncodeToString(gn.publicKey)
+// 	// Get our public key as hex
+// 	publicKeyHex := hex.EncodeToString(gn.publicKey)
 
-	msg := GossipMessage{
-		PublicKey:        publicKeyHex,
-		Type:             "heartbeat",
-		Category:         "broadcast",
-		Data:             messageData,
-		OriginID:         gn.nodeID,
-		TargetID:         0,
-		MessageID:        generateMessageID(),
-		TTL:              10,
-		Timestamp:        uint64(time.Now().Unix()),
-		DigitalSignature: signatureHex,
-	}
+// 	msg := GossipMessage{
+// 		PublicKey:        publicKeyHex,
+// 		Type:             "heartbeat",
+// 		Category:         "broadcast",
+// 		Data:             messageData,
+// 		OriginID:         gn.nodeID,
+// 		TargetID:         0,
+// 		RoomID:           gn.roomID, // Add the missing RoomID!
+// 		MessageID:        generateMessageID(),
+// 		TTL:              10,
+// 		Timestamp:        uint64(time.Now().Unix()),
+// 		DigitalSignature: signatureHex,
+// 	}
 
-	err := gn.SendGossipMessage(peer, msg)
-	if err != nil {
-		fmt.Printf("Failed to send heartbeat to peer %d: %v\n", peer.ID, err)
-	}
-}
+// 	err := gn.SendGossipMessage(peer, msg)
+// 	if err != nil {
+// 		fmt.Printf("Failed to send heartbeat to peer %d: %v\n", peer.ID, err)
+// 	}
+// }
 
 // HandleGossipMessage handles incoming gossip messages
 func (gn *GossipNetwork) HandleGossipMessage(msg GossipMessage) {
@@ -506,72 +544,120 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 	case "chat":
 		fmt.Printf("Processing chat message: %v\n", msg.Data)
 
-	case "heartbeat":
-		// Update peer last seen time
-		gn.updatePeerLastSeen(msg.OriginID)
+		// sending acknowledgement message back to peer
+		gn.GossipMessage("ack", "direct", msg, msg.OriginID, msg.RoomID, "")
 
-	case "consensus_message":
-		// Handle consensus-related gossip
-		gn.handleConsensusGossip(msg)
+		// Doesent store message content (apart from sender, type, digital signature and timestamp)
+		tx := consensus.NewTransaction(msg.PublicKey, "chat", msg.DigitalSignature, msg.Timestamp, msg.RoomID)
+
+		var nodeIndex int
+
+		for i, node := range nodes {
+			if node.ID == PublicKeyToNodeID(msg.PublicKey){
+				nodeIndex = i
+			}
+		}
+
+		nodes[nodeIndex].HB.AddTransaction(tx)
+
+		fmt.Println("Added Message as Transaction")
+
+	case "ack":
+		dataBytes, err := json.Marshal(msg.Data)
+		if err != nil {
+			log.Println("Error marshaling msg.Data:", err)
+			return
+		}
+
+		var ackmsg GossipMessage
+		err = json.Unmarshal(dataBytes, &ackmsg)
+		if err != nil {
+			log.Println("Error unmarshaling into GossipMessage:", err)
+			return
+		}
+
+
+		tx := consensus.NewTransaction(ackmsg.PublicKey, "chat", ackmsg.DigitalSignature, ackmsg.Timestamp, ackmsg.RoomID)
+
+		var nodeIndex int
+
+		for i, node := range nodes {
+			if node.ID == PublicKeyToNodeID(ackmsg.PublicKey){
+				nodeIndex = i
+			}
+		}
+
+		nodes[nodeIndex].HB.AddTransaction(tx)
+
+		fmt.Println("Added Message as Transaction")
+		 
+	// case "heartbeat":
+	// 	// Update peer last seen time
+	// 	gn.updatePeerLastSeen(msg.OriginID)
+
+	// case "consensus_message":
+	// 	// Handle consensus-related gossip
+	// 	gn.handleConsensusGossip(msg)
+	// }
 	}
 }
 
 // healthCheckLoop monitors peer health
-func (gn *GossipNetwork) healthCheckLoop() {
-	ticker := time.NewTicker(30 * time.Second) // Changed from 15 to 30 seconds
-	for range ticker.C {
-		gn.checkPeerHealth()
-	}
-}
+// func (gn *GossipNetwork) healthCheckLoop() {
+// 	ticker := time.NewTicker(30 * time.Second) // Changed from 15 to 30 seconds
+// 	for range ticker.C {
+// 		gn.checkPeerHealth()
+// 	}
+// }
 
 // checkPeerHealth checks if peers are still alive
-func (gn *GossipNetwork) checkPeerHealth() {
-	gn.gossipMutex.Lock()
-	defer gn.gossipMutex.Unlock()
+// func (gn *GossipNetwork) checkPeerHealth() {
+// 	gn.gossipMutex.Lock()
+// 	defer gn.gossipMutex.Unlock()
 
-	now := time.Now()
-	deadCount := 0
-	aliveCount := 0
+// 	now := time.Now()
+// 	deadCount := 0
+// 	aliveCount := 0
 
-	for id, peer := range gn.gossipPeers {
-		// Increase timeout from 60 seconds to 5 minutes
-		if now.Sub(peer.LastSeen) > 5*60*time.Second {
-			peer.IsAlive = false
-			deadCount++
-			fmt.Printf("Peer %d marked as dead (last seen: %v ago)\n", id, now.Sub(peer.LastSeen))
-		} else {
-			aliveCount++
-		}
-	}
+// 	for id, peer := range gn.gossipPeers {
+// 		// Increase timeout from 60 seconds to 5 minutes
+// 		if now.Sub(peer.LastSeen) > 5*60*time.Second {
+// 			peer.IsAlive = false
+// 			deadCount++
+// 			fmt.Printf("Peer %d marked as dead (last seen: %v ago)\n", id, now.Sub(peer.LastSeen))
+// 		} else {
+// 			aliveCount++
+// 		}
+// 	}
 
-	fmt.Printf("Peer health check: %d alive, %d dead, total: %d\n", aliveCount, deadCount, len(gn.gossipPeers))
-}
+// 	fmt.Printf("Peer health check: %d alive, %d dead, total: %d\n", aliveCount, deadCount, len(gn.gossipPeers))
+// }
 
 // updatePeerLastSeen updates peer last seen time
-func (gn *GossipNetwork) updatePeerLastSeen(peerID uint64) {
-	gn.gossipMutex.Lock()
-	defer gn.gossipMutex.Unlock()
+// func (gn *GossipNetwork) updatePeerLastSeen(peerID uint64) {
+// 	gn.gossipMutex.Lock()
+// 	defer gn.gossipMutex.Unlock()
 
-	if peer, exists := gn.gossipPeers[peerID]; exists {
-		peer.LastSeen = time.Now()
-		peer.IsAlive = true
-		fmt.Printf("Updated peer %d last seen time\n", peerID)
-	}
-}
+// 	if peer, exists := gn.gossipPeers[peerID]; exists {
+// 		peer.LastSeen = time.Now()
+// 		peer.IsAlive = true
+// 		fmt.Printf("Updated peer %d last seen time\n", peerID)
+// 	}
+// }
 
 // Add a method to manually refresh peer health
-func (gn *GossipNetwork) RefreshPeerHealth() {
-	gn.gossipMutex.Lock()
-	defer gn.gossipMutex.Unlock()
+// func (gn *GossipNetwork) RefreshPeerHealth() {
+// 	gn.gossipMutex.Lock()
+// 	defer gn.gossipMutex.Unlock()
 
-	now := time.Now()
-	for _, peer := range gn.gossipPeers {
-		// Mark all peers as alive and update their last seen time
-		peer.IsAlive = true
-		peer.LastSeen = now
-	}
-	fmt.Printf("Refreshed health for all %d peers\n", len(gn.gossipPeers))
-}
+// 	now := time.Now()
+// 	for _, peer := range gn.gossipPeers {
+// 		// Mark all peers as alive and update their last seen time
+// 		peer.IsAlive = true
+// 		peer.LastSeen = now
+// 	}
+// 	fmt.Printf("Refreshed health for all %d peers\n", len(gn.gossipPeers))
+// }
 
 // handleConsensusGossip handles consensus messages received via gossip
 func (gn *GossipNetwork) handleConsensusGossip(msg GossipMessage) {
@@ -581,27 +667,32 @@ func (gn *GossipNetwork) handleConsensusGossip(msg GossipMessage) {
 
 // forwardGossipMessage forwards gossip messages to other peers
 func (gn *GossipNetwork) forwardGossipMessage(msg GossipMessage) {
-	gn.gossipMutex.RLock()
-	peers := make([]*GossipNode, 0, len(gn.gossipPeers))
-	for _, peer := range gn.gossipPeers {
-		if peer.IsAlive && peer.ID != msg.OriginID {
-			peers = append(peers, peer)
+
+	// simulating a targeted censorship
+	if !isCensorshipAttackerNode {
+		gn.gossipMutex.RLock()
+		peers := make([]*GossipNode, 0, len(gn.gossipPeers))
+		for _, peer := range gn.gossipPeers {
+			if peer.IsAlive && peer.ID != msg.OriginID {
+				peers = append(peers, peer)
+			}
+		}
+		gn.gossipMutex.RUnlock()
+
+		// Forward to random subset
+		numToForward := min(2, len(peers))
+		selected := gn.selectRandomPeers(peers, numToForward)
+
+		for _, peer := range selected {
+			fmt.Printf("Forwarding gossip message to peer %d\n", peer.ID)
+			gn.SendGossipMessage(peer, msg)
 		}
 	}
-	gn.gossipMutex.RUnlock()
 
-	// Forward to random subset
-	numToForward := min(2, len(peers))
-	selected := gn.selectRandomPeers(peers, numToForward)
-
-	for _, peer := range selected {
-		fmt.Printf("Forwarding gossip message to peer %d\n", peer.ID)
-		gn.SendGossipMessage(peer, msg)
-	}
 }
 
 // GossipMessage sends a custom message to the network
-func (gn *GossipNetwork) GossipMessage(msgType, category string, data interface{}, targetID uint64, roomID string) {
+func (gn *GossipNetwork) GossipMessage(msgType, category string, data interface{}, targetID uint64, roomID string, publicKeyStr string) {
 	// Create message data
 	messageData := fmt.Sprintf("%v", data)
 	messageBytes := []byte(messageData)
@@ -610,8 +701,15 @@ func (gn *GossipNetwork) GossipMessage(msgType, category string, data interface{
 	signature := gn.SignMessage(messageBytes)
 	signatureHex := hex.EncodeToString(signature)
 
-	// Get our public key as hex
-	publicKeyHex := hex.EncodeToString(gn.publicKey)
+	publicKeyHex := ""
+	if (publicKeyStr == ""){
+		// Get our public key as hex
+		publicKeyHex = hex.EncodeToString(gn.publicKey)
+	} else {
+		publicKeyHex = publicKeyStr
+	}
+
+	
 
 	gossipMsg := GossipMessage{
 		PublicKey:        publicKeyHex,
@@ -728,4 +826,32 @@ func isPeerInList(item Peer, list []Peer) bool {
 		}
 	}
 	return false // Item not found, it's not in the list
+}
+
+// PublicKeyToID converts a hex-encoded ed25519 public key string into a deterministic uint64 ID.
+func PublicKeyToID(hexStr string) uint64 {
+	bytes, err := hex.DecodeString(hexStr)
+	if err != nil {
+		log.Fatalf("invalid hex string: %v", err)
+	}
+
+	if len(bytes) != ed25519.PublicKeySize {
+		log.Fatalf("invalid key length: expected %d, got %d", ed25519.PublicKeySize, len(bytes))
+	}
+
+	hash := sha256.Sum256(bytes)
+	return binary.LittleEndian.Uint64(hash[:8])
+}
+
+func PublicKeyToNodeID(hexStr string) uint64 {
+
+	ID := PublicKeyToID(hexStr)
+
+	for i, peerID := range peerIDs {
+		if ID == peerID {
+			return uint64(i)
+		}
+	}
+
+	return uint64(0)
 }

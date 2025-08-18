@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	batchSize = 2
+	batchSize = 1
 	numCores  = 4
 )
 
@@ -165,6 +165,8 @@ func (s *Server) commitLoop() {
 			for _, txx := range out {
 				for _, tx := range txx {
 					hash := tx.Hash()
+
+					fmt.Println("Was here!!")
 
 					txString := fmt.Sprint("%s", tx)
 					txString = strings.Split(txString, "%s")[1]
