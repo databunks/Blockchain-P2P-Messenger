@@ -223,7 +223,7 @@ func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool) (*
 	fmt.Println("Initializing integrated gossip network...")
 
 	// Create gossip network instance
-	gossipNet := NewGossipNetwork(101, roomID, port)
+	gossipNet := NewGossipNetwork(PublicKeyToID(GetYggdrasilNodeInfo().Key), roomID, port)
 
 	// Get Yggdrasil peers
 	yggdrasilPeers, err := gossipNet.GetYggdrasilPeers("unique")
@@ -289,7 +289,7 @@ func (gn *GossipNetwork) Start() {
 
 // startListener starts listening for incoming connections
 func (gn *GossipNetwork) startListener() {
-	var yggdrasilNodeInfo = gn.GetYggdrasilNodeInfo()
+	var yggdrasilNodeInfo = GetYggdrasilNodeInfo()
 
 	address := fmt.Sprintf("[%s]:%d", yggdrasilNodeInfo.Address, gn.port)
 	listener, err := net.Listen("tcp", address)
@@ -543,9 +543,13 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 	switch msg.Type {
 	case "chat":
 		fmt.Printf("Processing chat message: %v\n", msg.Data)
+		fmt.Println(msg.OriginID)
+
 
 		// sending acknowledgement message back to peer
 		gn.GossipMessage("ack", "direct", msg, msg.OriginID, msg.RoomID, "")
+
+		
 
 		// Doesent store message content (apart from sender, type, digital signature and timestamp)
 		tx := consensus.NewTransaction(msg.PublicKey, "chat", msg.DigitalSignature, msg.Timestamp, msg.RoomID)
@@ -582,12 +586,15 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 		var nodeIndex int
 
 		for i, node := range nodes {
-			if node.ID == PublicKeyToNodeID(ackmsg.PublicKey){
+			if node.ID == PublicKeyToNodeID(msg.PublicKey){
 				nodeIndex = i
 			}
 		}
 
 		nodes[nodeIndex].HB.AddTransaction(tx)
+
+		fmt.Println("Received ack from: ")
+		fmt.Println(PublicKeyToNodeID(msg.PublicKey))
 
 		fmt.Println("Added Message as Transaction")
 		 
@@ -771,12 +778,13 @@ func (gn *GossipNetwork) GetYggdrasilPeers(mode string) ([]Peer, error) {
 		}
 		return uniquePeers, nil
 	}
+	
 
 	return nil, nil
 }
 
 // GetYggdrasilNodeInfo gets information about the current Yggdrasil node
-func (gn *GossipNetwork) GetYggdrasilNodeInfo() YggdrasilNodeInfo {
+func GetYggdrasilNodeInfo() YggdrasilNodeInfo {
 	out, err := exec.Command("sudo", "yggdrasilctl", "-json", "getSelf").Output()
 	if err != nil {
 		log.Fatalf("Failed to run yggdrasilctl: %v", err)

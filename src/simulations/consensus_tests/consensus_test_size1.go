@@ -33,9 +33,9 @@ func RunTest1(){
 
 	//gossipNet.
 
-	gossipNet.GossipMessage("chat", "broadcast", "I hope i don't get censored!", 0, roomID, "")
-	gossipNet.GossipMessage("chat", "broadcast", "I hope i don't get censored2!", 0, roomID, "")
-	gossipNet.GossipMessage("chat", "broadcast", "I hope i don't get censored3!", 0, roomID, "")
+	gossipNet.GossipMessage("chat", "broadcast", "I hope i don't get censored24242!", 0, roomID, "")
+	// gossipNet.GossipMessage("chat", "broadcast", "I hope i don't get censored2!", 0, roomID, "")
+	// gossipNet.GossipMessage("chat", "broadcast", "I hope i don't get censored3!", 0, roomID, "")
 
 
 
