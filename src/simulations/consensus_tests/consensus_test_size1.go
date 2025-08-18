@@ -5,6 +5,7 @@ import (
 	gossipnetwork "blockchain-p2p-messenger/src/network_gossip"
 	"blockchain-p2p-messenger/src/peerDetails"
 	"fmt"
+	"time"
 )
 
 // N = 4
@@ -23,7 +24,7 @@ func RunTest1(){
 	peerDetails.AddPeer(publicKey2_VM2, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey2_VM2), false, roomID)
 	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), false, roomID)
 	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey4_VM4), false, roomID)
-	//
+
 	
 
 	gossipNet, err := gossipnetwork.InitializeGossipNetwork(roomID, 3000, false)
@@ -34,10 +35,10 @@ func RunTest1(){
 
 	//gossipNet.
 
-	gossipNet.GossipMessage("chat", "broadcast", "I hope i don't get censored24242!", 0, roomID, "")
+	time.Sleep(time.Second * 5)
+	gossipNet.GossipMessage("chat", "broadcast", "I hope i don't get censored24242!", 1, roomID, "")
 	// gossipNet.GossipMessage("chat", "broadcast", "I hope i don't get censored2!", 0, roomID, "")
 	// gossipNet.GossipMessage("chat", "broadcast", "I hope i don't get censored3!", 0, roomID, "")
-
 
 
 

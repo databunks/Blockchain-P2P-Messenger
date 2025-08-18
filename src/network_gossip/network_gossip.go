@@ -30,6 +30,7 @@ type GossipMessage struct {
 	Type             string      `json:"type"`
 	Category         string      `json:"category"` // "broadcast", "direct", "room_specific"
 	Data             interface{} `json:"data"`
+	DirectOriginID uint64 		 `json:"direct_origin_id"`
 	OriginID         uint64      `json:"origin_id"`
 	TargetID         uint64      `json:"target_id"`
 	RoomID           string      `json:"room_id"`
@@ -221,6 +222,7 @@ func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool) (*
 	isCensorshipAttackerNode = toggleAttacker
 
 	fmt.Println("Initializing integrated gossip network...")
+	fmt.Println(PublicKeyToID(GetYggdrasilNodeInfo().Key))
 
 	// Create gossip network instance
 	gossipNet := NewGossipNetwork(PublicKeyToID(GetYggdrasilNodeInfo().Key), roomID, port)
@@ -502,6 +504,7 @@ func (gn *GossipNetwork) HandleGossipMessage(msg GossipMessage) {
 	// Determine if we should process this message
 	shouldProcess := gn.shouldProcessMessage(msg)
 
+
 	if shouldProcess {
 		// Process the message for ourselves
 		gn.processGossipMessage(msg)
@@ -547,9 +550,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 
 
 		// sending acknowledgement message back to peer
-		gn.GossipMessage("ack", "direct", msg, msg.OriginID, msg.RoomID, "")
-
-		
+		gn.GossipMessage("ack", "broadcast", msg, msg.OriginID, msg.RoomID, "")
 
 		// Doesent store message content (apart from sender, type, digital signature and timestamp)
 		tx := consensus.NewTransaction(msg.PublicKey, "chat", msg.DigitalSignature, msg.Timestamp, msg.RoomID)
@@ -580,23 +581,28 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 			return
 		}
 
+		if (ackmsg.TargetID == msg.OriginID) {
+			tx := consensus.NewTransaction(ackmsg.PublicKey, "chat", ackmsg.DigitalSignature, ackmsg.Timestamp, ackmsg.RoomID)
 
-		tx := consensus.NewTransaction(ackmsg.PublicKey, "chat", ackmsg.DigitalSignature, ackmsg.Timestamp, ackmsg.RoomID)
+			var nodeIndex int
 
-		var nodeIndex int
-
-		for i, node := range nodes {
-			if node.ID == PublicKeyToNodeID(msg.PublicKey){
-				nodeIndex = i
+			for i, node := range nodes {
+				if node.ID == PublicKeyToNodeID(msg.PublicKey){
+					nodeIndex = i
+				}
 			}
+
+			nodes[nodeIndex].HB.AddTransaction(tx)
+
+			fmt.Println("Received ack from: ")
+			fmt.Println(msg.OriginID)
+
+			fmt.Println("Added Message as Transaction")
+
 		}
 
-		nodes[nodeIndex].HB.AddTransaction(tx)
 
-		fmt.Println("Received ack from: ")
-		fmt.Println(PublicKeyToNodeID(msg.PublicKey))
-
-		fmt.Println("Added Message as Transaction")
+		
 		 
 	// case "heartbeat":
 	// 	// Update peer last seen time
