@@ -36,7 +36,7 @@ func RunTest1(){
 	//gossipNet.
 
 	time.Sleep(time.Second * 5)
-	gossipNet.GossipMessage("chat", "broadcast", "I hope i don't get censored24242!", 1, roomID, "")
+	// gossipNet.GossipMessage("chat", "broadcast", "I hope i don't get censored24242!", 1, roomID, "")
 	// gossipNet.GossipMessage("chat", "broadcast", "I hope i don't get censored2!", 0, roomID, "")
 	// gossipNet.GossipMessage("chat", "broadcast", "I hope i don't get censored3!", 0, roomID, "")
 

@@ -32,7 +32,6 @@ type GossipMessage struct {
 	Data             interface{} `json:"data"`
 	OriginID         uint64      `json:"origin_id"`
 	TargetID         uint64      `json:"target_id"`
-	TrueTargetID uint64 		 `json:"true_target_id"`
 	RoomID           string      `json:"room_id"`
 	MessageID        string      `json:"message_id"`
 	TTL              int         `json:"ttl"`
@@ -511,7 +510,7 @@ func (gn *GossipNetwork) HandleGossipMessage(msg GossipMessage) {
 	}
 
 	// Always forward if TTL > 0 (unless it was meant only for us)
-	if msg.TTL > 0 && msg.Category != "direct" {
+	if msg.TTL > 0 { // && msg.Category != "direct" {
 		msg.TTL--
 		gn.forwardGossipMessage(msg)
 	}
@@ -550,8 +549,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 
 
 		// sending acknowledgement message back to peer
-		msg.TrueTargetID = PublicKeyToID(msg.PublicKey)
-		gn.GossipMessage("ack", "broadcast", msg, msg.OriginID, msg.RoomID, "")
+		gn.GossipMessage("ack", "direct", msg, msg.OriginID, msg.RoomID, "")
 
 		// Doesent store message content (apart from sender, type, digital signature and timestamp)
 		tx := consensus.NewTransaction(msg.PublicKey, "chat", msg.DigitalSignature, msg.Timestamp, msg.RoomID)
@@ -582,24 +580,24 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 			return
 		}
 
-		if (ackmsg.TrueTargetID == PublicKeyToID(GetYggdrasilNodeInfo().Key)){
-			tx := consensus.NewTransaction(ackmsg.PublicKey, "chat", ackmsg.DigitalSignature, ackmsg.Timestamp, ackmsg.RoomID)
+		
+		tx := consensus.NewTransaction(ackmsg.PublicKey, "chat", ackmsg.DigitalSignature, ackmsg.Timestamp, ackmsg.RoomID)
 
-			var nodeIndex int
+		var nodeIndex int
 
-			for i, node := range nodes {
-				if node.ID == PublicKeyToNodeID(msg.PublicKey){
-					nodeIndex = i
-				}
+		for i, node := range nodes {
+			if node.ID == PublicKeyToNodeID(msg.PublicKey){
+				nodeIndex = i
 			}
-
-			nodes[nodeIndex].HB.AddTransaction(tx)
-
-			fmt.Println("Received ack from: ")
-			fmt.Println(msg.OriginID)
-
-			fmt.Println("Added Message as Transaction")
 		}
+
+		nodes[nodeIndex].HB.AddTransaction(tx)
+
+		fmt.Println("Received ack from: ")
+		fmt.Println(msg.OriginID)
+
+		fmt.Println("Added Message as Transaction")
+		
 
 		
 
