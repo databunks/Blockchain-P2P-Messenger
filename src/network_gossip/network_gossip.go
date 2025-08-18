@@ -30,9 +30,9 @@ type GossipMessage struct {
 	Type             string      `json:"type"`
 	Category         string      `json:"category"` // "broadcast", "direct", "room_specific"
 	Data             interface{} `json:"data"`
-	DirectOriginID uint64 		 `json:"direct_origin_id"`
 	OriginID         uint64      `json:"origin_id"`
 	TargetID         uint64      `json:"target_id"`
+	TrueTargetID uint64 		 `json:"true_target_id"`
 	RoomID           string      `json:"room_id"`
 	MessageID        string      `json:"message_id"`
 	TTL              int         `json:"ttl"`
@@ -550,6 +550,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 
 
 		// sending acknowledgement message back to peer
+		msg.TrueTargetID = PublicKeyToID(msg.PublicKey)
 		gn.GossipMessage("ack", "broadcast", msg, msg.OriginID, msg.RoomID, "")
 
 		// Doesent store message content (apart from sender, type, digital signature and timestamp)
@@ -581,7 +582,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 			return
 		}
 
-		if (ackmsg.TargetID == msg.OriginID) {
+		if (ackmsg.TrueTargetID == PublicKeyToID(GetYggdrasilNodeInfo().Key)){
 			tx := consensus.NewTransaction(ackmsg.PublicKey, "chat", ackmsg.DigitalSignature, ackmsg.Timestamp, ackmsg.RoomID)
 
 			var nodeIndex int
@@ -598,8 +599,9 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 			fmt.Println(msg.OriginID)
 
 			fmt.Println("Added Message as Transaction")
-
 		}
+
+		
 
 
 		
