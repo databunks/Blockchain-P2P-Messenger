@@ -23,6 +23,7 @@ func RunTest1(){
 	peerDetails.AddPeer(publicKey2_VM2, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey2_VM2), false, roomID)
 	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), false, roomID)
 	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey4_VM4), false, roomID)
+	//
 	
 
 	gossipNet, err := gossipnetwork.InitializeGossipNetwork(roomID, 3000, false)
