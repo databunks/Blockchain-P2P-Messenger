@@ -90,33 +90,33 @@ func RunGossipTestImplementationVM4(runAsAttacker bool){
 }
 
 
-func ReceiveStartMessage(port string) {
-	
+func ReceiveStartMessage(port string) string {
     // Listen on a TCP port
     ln, err := net.Listen("tcp", ":"+port)
     if err != nil {
         fmt.Println("Error listening:", err)
-        return
+        return ""
     }
     defer ln.Close()
     fmt.Println("Listening on port", port)
 
-    // Accept a connection
+    // Accept a connection (blocks until a client connects)
     conn, err := ln.Accept()
     if err != nil {
         fmt.Println("Error accepting:", err)
-        return
+        return ""
     }
     defer conn.Close()
 
-    // Read message from connection
-    message, err := bufio.NewReader(conn).ReadString('\n')
+    // Read message from connection (blocks until newline comes)
+    reader := bufio.NewReader(conn)
+    message, err := reader.ReadString('\n')
     if err != nil {
         fmt.Println("Error reading:", err)
-        return
+        return ""
     }
 
     fmt.Println("Received:", message)
+    return message
 }
-
 
