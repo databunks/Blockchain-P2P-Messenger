@@ -76,10 +76,6 @@ func main() {
 
 	// network.InitializeNetwork(roomID, true)
 
-
-	// Wait for message from statcollector
-	gossip_test_VM1.ReceiveStartMessage(":3002")
-
 	// A=1 F=1
 	gossip_test_VM1.RunGossipTestControlVM1(false, 1)
 

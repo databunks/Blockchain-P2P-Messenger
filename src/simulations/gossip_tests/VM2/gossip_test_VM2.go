@@ -5,8 +5,8 @@ import (
 	"blockchain-p2p-messenger/src/network"
 	"blockchain-p2p-messenger/src/network_gossip"
 	"blockchain-p2p-messenger/src/peerDetails"
-	"bufio"
 	"fmt"
+	"log"
 	"net"
 )
 var publicKey_VM1 string = "0000040cd8e7f870ff1146e03589b988d82aedb6464c5085a9aba945e60c4fcd"
@@ -19,10 +19,10 @@ var roomID string = "room-xyz-987" // mock room IDd
 
 func main() {
 
-	ReceiveStartMessage(":3002")
+	// ReceiveStartMessage(":3002")
 
-	// A=1 F=1
-	RunGossipTestControlVM2(true, 1)
+	// // A=1 F=1
+	// RunGossipTestControlVM2(true, 1)
 
 	// A=1 F=2
 	// RunGossipTestControlVM2(false, 1)
@@ -91,34 +91,28 @@ func RunGossipTestImplementationVM2(runAsAttacker bool){
 }
 
 
-func ReceiveStartMessage(port string) string {
-    // Listen on a TCP port
-    ln, err := net.Listen("tcp", ":"+port)
-    if err != nil {
-        fmt.Println("Error listening:", err)
-        return ""
-    }
-    defer ln.Close()
-    fmt.Println("Listening on port", port)
+func ReceiveStartMessage(port int) {
+	var yggdrasilNodeInfo = network.GetYggdrasilNodeInfo()
 
-    // Accept a connection (blocks until a client connects)
-    conn, err := ln.Accept()
-    if err != nil {
-        fmt.Println("Error accepting:", err)
-        return ""
-    }
-    defer conn.Close()
+	address := fmt.Sprintf("[%s]:%d", yggdrasilNodeInfo.Address, port)
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		log.Fatalf("Failed to listen on port %d: %v", port, err)
+	}
+	defer listener.Close()
 
-    // Read message from connection (blocks until newline comes)
-    reader := bufio.NewReader(conn)
-    message, err := reader.ReadString('\n')
-    if err != nil {
-        fmt.Println("Error reading:", err)
-        return ""
-    }
+	log.Printf("Listening on %s for start message", address)
 
-    fmt.Println("Received:", message)
-    return message
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Printf("Failed to accept connection: %v", err)
+			continue
+		}
+
+		// Handle the connection in a goroutine
+		defer conn.Close()
+	}
 }
 
 
