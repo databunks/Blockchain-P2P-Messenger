@@ -65,7 +65,6 @@ func RunGossipTestControlVM1(runAsAttacker bool, fanout int){
 	} else{
 		network.InitializeNetwork(roomID, true, true)
 	
-		
 	}
 	
 }

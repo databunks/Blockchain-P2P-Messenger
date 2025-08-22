@@ -1,8 +1,7 @@
-package gossip_test
+package main
 
 import (
 	"blockchain-p2p-messenger/src/peerDetails"
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -19,18 +18,18 @@ var lastRecievedMessageTime time.Time
 func main() {
 	
 	
-    go ListenOnPort(":3001")
+    go ListenOnPort(":3002")
 
-	fmt.Println("Starting timer in 20s.....")
-	time.Sleep(time.Second * 20)
+	// fmt.Println("Starting timer in 20s.....")
+	// time.Sleep(time.Second * 20)
 
 	var start time.Time = time.Now()
-	SendMessage("Start!", "room-xyz-987", 3002)
+	// SendMessage("Start!", "room-xyz-987", 3002)
 	fmt.Println("Timer Started!!")
 
 	time.Sleep(time.Minute * 1)
 	
-	fmt.Println(start.Sub(time.Now()))
+	fmt.Println(time.Now().Sub(start))
 	fmt.Println(reachabilityCount)
 
 }
@@ -66,28 +65,33 @@ func handleConnection(conn net.Conn) {
 	// Close connection
     defer conn.Close()
 
-    // Create a buffer to read data from the client
-    reader := bufio.NewReader(conn)
 
     for {
-        // Read data from the client
-        message, err := reader.ReadString('\n')
-        if err != nil {
-            if err.Error() == "EOF" {
-                fmt.Println("Client disconnected.")
-                return
-            }
-            fmt.Printf("Error reading from client: %v\n", err)
-            return
-        }
+        defer conn.Close()
 
-        // Print the message received from the client
-        fmt.Printf("Received from client: %s", message)
+		
+	// Read message sent by client
+	buffer := make([]byte, 1024)
+	n, err := conn.Read(buffer)
+	if err != nil {
+		fmt.Println("Error reading:", err)
+		return
+	}
 
-		var filteredMessage string = ""
+	// Unmarshal message (you JSON-encoded it before sending)
+	var msg string
+	err = json.Unmarshal(buffer[:n], &msg)
+	if err != nil {
+		fmt.Println("Error unmarshaling message:", err)
+		return
+	}
 
-		if strings.HasPrefix("Message Reached To Peer ", message){
-			filteredMessage = strings.Split(message, "Message Reached To Peer ")[0]
+	fmt.Println("Received from peer:", msg)
+
+		var filteredMessage string = msg
+
+		if strings.HasPrefix("Message Reached To Peer ", msg){
+			filteredMessage = strings.Split(msg, "Message Reached To Peer ")[0]
 		}
 		
 

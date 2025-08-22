@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -81,6 +82,7 @@ func init() {
 
 func InitializeNetwork(roomID string, disableAuthToggle bool, isCensoringTestToggle bool) error{
 	disableAuth = disableAuthToggle
+	isCensoringTest = isCensoringTestToggle
 
 	peers := peerDetails.GetPeersInRoom(roomID)
 
@@ -286,11 +288,13 @@ func handleConnection(conn net.Conn) {
 			
 			log.Printf("Authenticated!")
 
+			fmt.Println(message.Message)
 			switch message.Type {
 			case "chat":
 				if (isCensoringTest){
-					if message.Message == "Official group chat message!"{
-						SendMessageToStatCollector("Recieved Censored Message", message.RoomID, 3001)
+					if strings.Contains(message.Message, "Official group chat message!"){
+						SendMessageToStatCollector("Recieved Censored Message", message.RoomID, 3002)
+						
 					}
 				}
 
@@ -522,15 +526,25 @@ func SendMessageToStatCollector(messageContent string, roomID string, port int){
 
 	var statCollectorPublicKey string = "0000005ed266dc58d687b6ed84af4b4657162033cf379e9d8299bba941ae66e0"
 
+	
+
 	peers := peerDetails.GetPeersInRoom(roomID)
 
 	for _, peer := range peers{
 
 		if peer.PublicKey == statCollectorPublicKey {
+			
 			// Dial peer
 			fmt.Printf("Establishing connection with %s, %s.......\n", peer.IP, peer.PublicKey)
+
+			
 			address := net.JoinHostPort(peer.IP, fmt.Sprintf("%d", port))
 			fmt.Println(address)
+
+			if (GetYggdrasilNodeInfo().Key == statCollectorPublicKey){
+				address = "localhost:" + "3002"
+			}
+	
 
 			conn, err := net.Dial("tcp", address)
 			if err != nil {

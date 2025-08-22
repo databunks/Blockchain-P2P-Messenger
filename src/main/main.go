@@ -76,8 +76,12 @@ func main() {
 
 	// network.InitializeNetwork(roomID, true)
 
+
+	
+
 	// A=1 F=1
 	gossip_test_VM1.RunGossipTestControlVM1(false, 1)
+
 
 
 
