@@ -1,4 +1,4 @@
-package simulations
+package digitalsignatureforgerytests
 
 import (
 	"blockchain-p2p-messenger/src/network"

@@ -2,6 +2,7 @@ package gossipnetwork
 
 import (
 	"blockchain-p2p-messenger/src/consensus"
+	"blockchain-p2p-messenger/src/network"
 	"blockchain-p2p-messenger/src/peerDetails"
 	"crypto/ed25519"
 	cryptorand "crypto/rand"
@@ -500,9 +501,6 @@ func (gn *GossipNetwork) HandleGossipMessage(msg GossipMessage) {
 		return
 	}
 
-	fmt.Println("Nigga should process:")
-	fmt.Println(gn.nodeID)
-	fmt.Println(msg.TargetID)
 	// Determine if we should process this message
 	shouldProcess := gn.shouldProcessMessage(msg)
 
@@ -522,7 +520,7 @@ func (gn *GossipNetwork) HandleGossipMessage(msg GossipMessage) {
 func (gn *GossipNetwork) shouldProcessMessage(msg GossipMessage) bool {
 	switch msg.Category {
 	case "broadcast":
-		return true // Everyone processes broadcasts
+		return true // everyone processes broadcasts
 
 	case "direct":
 		return msg.TargetID == gn.nodeID // Only target processes direct messages
@@ -549,6 +547,11 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 	case "chat":
 		fmt.Printf("Processing chat message: %v\n", msg.Data)
 		fmt.Println(msg.OriginID)
+
+		// Reachability check
+		if msg.Data == "I hope I don't get censored!" {
+			network.SendMessageToStatCollector("Message Reached To Peer " + string(gn.publicKey), msg.RoomID, 3001)
+		}
 
 
 		// sending acknowledgement message back to peer

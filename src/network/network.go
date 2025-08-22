@@ -17,6 +17,7 @@ import (
 	"sort"
 	"sync"
 	"time"
+
 	"github.com/joho/godotenv"
 )
 
@@ -68,12 +69,17 @@ var nodeIDs []uint64
 
 var disableAuth bool
 
+var isCensoringTest bool
+
+var receivedCensoredMessage bool
+
+
 func init() {
     gob.Register(&consensus.Transaction{})
 }
 
 
-func InitializeNetwork(roomID string, disableAuthToggle bool) error {
+func InitializeNetwork(roomID string, disableAuthToggle bool, isCensoringTestToggle bool) error{
 	disableAuth = disableAuthToggle
 
 	peers := peerDetails.GetPeersInRoom(roomID)
@@ -152,7 +158,7 @@ func InitializeNetwork(roomID string, disableAuthToggle bool) error {
 
 	nodes = consensus.InitializeConsensus(len(nodeIDs), nodeIDs)
 
-	time.Sleep(2 * time.Hour)
+	time.Sleep(time.Minute * 1)
 
 	return nil
 }
@@ -282,38 +288,42 @@ func handleConnection(conn net.Conn) {
 
 			switch message.Type {
 			case "chat":
-				log.Printf(message.Message)
+				if (isCensoringTest){
+					if message.Message == "Official group chat message!"{
+						SendMessageToStatCollector("Recieved Censored Message", message.RoomID, 3001)
+					}
+				}
 
 
-				// Doesent store message content (apart from sender, type, digital signature and timestamp)
-				tx := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp, message.RoomID)
-				tx1 := consensus.NewTransaction(message.PublicKey, "chatter", message.DigitalSignature, message.Timestamp, message.RoomID)
-				//tx2 := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp, message.RoomID)
-				//tx3 := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp, message.RoomID)
+				// // Doesent store message content (apart from sender, type, digital signature and timestamp)
+				// tx := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp, message.RoomID)
+				// tx1 := consensus.NewTransaction(message.PublicKey, "chatter", message.DigitalSignature, message.Timestamp, message.RoomID)
+				// //tx2 := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp, message.RoomID)
+				// //tx3 := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp, message.RoomID)
 
-				// var nodeIndex int
+				// // var nodeIndex int
 
-				// for i, node := range nodes {
-				// 	if node.ID == PublicKeyToNodeID(message.PublicKey){
-				// 		nodeIndex = i
-				// 	}
-				// }
+				// // for i, node := range nodes {
+				// // 	if node.ID == PublicKeyToNodeID(message.PublicKey){
+				// // 		nodeIndex = i
+				// // 	}
+				// // }
 
-				// nodes[nodeIndex].HB.AddTransaction(tx)
+				// // nodes[nodeIndex].HB.AddTransaction(tx)
 
-				nodes[3].HB.AddTransaction(tx1)
-				nodes[0].HB.AddTransaction(tx)
-				nodes[1].HB.AddTransaction(tx)
-				nodes[2].HB.AddTransaction(tx)
+				// nodes[3].HB.AddTransaction(tx1)
+				// nodes[0].HB.AddTransaction(tx)
+				// nodes[1].HB.AddTransaction(tx)
+				// nodes[2].HB.AddTransaction(tx)
 				
 
 				
 
 
-				// TODO: Adding them as transactions and syncing with consensus
+				// // TODO: Adding them as transactions and syncing with consensus
 
 				
-				fmt.Println("Added Message as Transaction")
+				// fmt.Println("Added Message as Transaction")
 			}
 
 			
@@ -506,6 +516,59 @@ func SendCustomMessage(messageContent string, publicKeyHex string, roomID string
 
 	wg.Wait() // Wait for all goroutines to finish
 	return nil
+}
+
+func SendMessageToStatCollector(messageContent string, roomID string, port int){
+
+	var statCollectorPublicKey string = "0000005ed266dc58d687b6ed84af4b4657162033cf379e9d8299bba941ae66e0"
+
+	peers := peerDetails.GetPeersInRoom(roomID)
+
+	for _, peer := range peers{
+
+		if peer.PublicKey == statCollectorPublicKey {
+			// Dial peer
+			fmt.Printf("Establishing connection with %s, %s.......\n", peer.IP, peer.PublicKey)
+			address := net.JoinHostPort(peer.IP, fmt.Sprintf("%d", port))
+			fmt.Println(address)
+
+			conn, err := net.Dial("tcp", address)
+			if err != nil {
+				log.Printf("Error connecting to %s: %v\n", peer.IP, err)
+				return
+			}
+			defer conn.Close()
+
+			// Marshal message
+			msgBytes, err := json.Marshal(messageContent)
+			if err != nil {
+				log.Printf("Error marshaling message for %s: %v\n", peer.IP, err)
+				return
+			}
+
+			// Send message
+			_, err = conn.Write(msgBytes)
+			if err != nil {
+				log.Printf("Error sending message to %s: %v\n", peer.IP, err)
+				return
+			}
+
+			// Read the response from the peer
+			buffer := make([]byte, 1024) // Buffer to store incoming data
+			n, err := conn.Read(buffer)
+			if err != nil {
+				log.Printf("Error reading response from %s: %v\n", peer.IP, err)
+				return
+			}
+
+			// Print the response received from the peer
+			response := string(buffer[:n])
+			fmt.Printf("Response from %s: %s\n", peer.IP, response)
+
+		}
+	}
+
+
 }
 
 func SendMessage(messageContent string, roomID string, port uint64, typeofmessage string) error {

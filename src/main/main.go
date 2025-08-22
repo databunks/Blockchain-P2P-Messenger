@@ -1,7 +1,7 @@
 package main
 
 import (
-	consensustests "blockchain-p2p-messenger/src/simulations/consensus_tests"
+	gossip_test_VM1 "blockchain-p2p-messenger/src/simulations/gossip_tests/VM1"
 )
 
 //"blockchain-p2p-messenger/src/genkeys"
@@ -74,9 +74,15 @@ func main() {
 	// 	// gossipNet.GossipMessage("chat", "direct", "Private message!", 16750950217577629675, roomID)
 	// }()
 
-	consensustests.RunTest1()
-
 	// network.InitializeNetwork(roomID, true)
+
+
+	// Wait for message from statcollector
+	gossip_test_VM1.ReceiveStartMessage(":3002")
+
+	// A=1 F=1
+	gossip_test_VM1.RunGossipTestControlVM1(false, 1)
+
 
 
 	// Keep the main function alive
