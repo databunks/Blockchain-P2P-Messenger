@@ -687,6 +687,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 
 			// Check if we have pending acks for this message
 			if pendingAcks, exists := gn.pendingAcks[msg.ID]; exists {
+				fmt.Printf("NODE %d: Found %d pending acks for message %s\n", gn.nodeID, len(pendingAcks), msg.ID)
 				for _, pendingAck := range pendingAcks {
 					// Process each pending ack
 					if gn.processedAcks[msg.ID] == nil {
@@ -695,6 +696,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 					if !gn.processedAcks[msg.ID][pendingAck.PublicKey] {
 						gn.processedAcks[msg.ID][pendingAck.PublicKey] = true
 						msg.AcksReceived++
+						fmt.Printf("NODE %d: Processed pending ack from %s, total acks: %d\n", gn.nodeID, pendingAck.PublicKey, msg.AcksReceived)
 					}
 				}
 				// Clear pending acks for this message
@@ -823,6 +825,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 							gn.pendingAcks[messageID] = make([]GossipMessage, 0)
 						}
 						gn.pendingAcks[messageID] = append(gn.pendingAcks[messageID], msg)
+						fmt.Printf("NODE %d: Stored ack from %s in pendingAcks for message %s, total pending: %d\n", gn.nodeID, msg.PublicKey, messageID, len(gn.pendingAcks[messageID]))
 					}
 				}
 
