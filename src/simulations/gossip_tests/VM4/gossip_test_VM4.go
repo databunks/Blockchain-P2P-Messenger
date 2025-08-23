@@ -19,7 +19,15 @@ var roomID string = "room-xyz-987" // mock room IDd
 
 func main() {
 
-	
+	// Singular Attackers
+	RunGossipTestControlVM4(false, 1)
+
+	// A=1 F=2
+	RunGossipTestControlVM4(false, 2)
+
+	// A=1 F=3
+	RunGossipTestControlVM4(false, 3)
+
 	// A=1 F=1
 	// RunGossipTestControlVM4(false, 1)
 

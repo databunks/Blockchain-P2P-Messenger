@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,7 +14,8 @@ import (
 
 
 var reachabilityCount = 0
-var lastRecievedMessageTime time.Time
+var lastReceivedMessageTime time.Time
+var timestamp_arrived []uint64
 
 func main() {
 	
@@ -29,8 +31,8 @@ func main() {
 
 	time.Sleep(time.Minute * 1)
 	
-	fmt.Println(time.Now().Sub(start))
-	fmt.Println(reachabilityCount)
+	fmt.Println("Reachability Count: %d", reachabilityCount)
+	fmt.Println("Latency: %s", lastReceivedMessageTime.UnixMilli()) 
 
 }
 
@@ -104,9 +106,18 @@ func handleConnection(conn net.Conn) {
 
 
 			// Control
-			case "Recieved Censored Message":
+			case "Received Censored Message":
 				reachabilityCount++
-				lastRecievedMessageTime = time.Now()
+				str := strings.Split(filteredMessage, " ")[1]
+				ts, err := strconv.ParseUint(str, 10, 64)
+
+				if (err != nil){
+					fmt.Println("Error parsing uint " + err.Error())
+				}
+
+				timestamp_arrived = append(timestamp_arrived, ts) 
+				
+				
 				break
 		}
 

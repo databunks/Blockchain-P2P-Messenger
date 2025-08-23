@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -293,7 +294,7 @@ func handleConnection(conn net.Conn) {
 			case "chat":
 				if (isCensoringTest){
 					if strings.Contains(message.Message, "Official group chat message!"){
-						SendMessageToStatCollector("Recieved Censored Message", message.RoomID, 3002)
+						SendMessageToStatCollector("Received Censored Message " +  strconv.FormatUint(message.Timestamp, 10), message.RoomID, 3002)
 						
 					}
 				}

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,7 +14,7 @@ import (
 )
 
 const (
-	batchSize = 1
+	batchSize = 2
 	numCores  = 4
 )
 
@@ -165,7 +166,6 @@ func (s *Server) commitLoop() {
 			for _, txx := range out {
 				for _, tx := range txx {
 					hash := tx.Hash()
-
 					fmt.Println("Was here!!")
 
 					txString := fmt.Sprint("%s", tx)
@@ -185,7 +185,8 @@ func (s *Server) commitLoop() {
 					blockchainStr := "MESSAGE_ADDED{SenderPublicKey: " + txSplit[0]  +", TypeOfMessage: "+ txSplit[1] + ", DigitalSignature: " + txSplit[2] + ", Timestamp: "  + txSplit[3] + ", RoomID: " + txSplit[4] +"}"
 					blockchain.AddBlock(blockchainStr, txSplit[4])
 
-					fmt.Println(tx)
+					fmt.Println(strconv.FormatUint(s.HB.ID, 10) + ": " + txString)
+					//fmt.Println(tx)
 					s.lock.Lock()
 					if _, ok := s.mempool[string(hash)]; !ok {
 						// Transaction is not in our mempool which implies we

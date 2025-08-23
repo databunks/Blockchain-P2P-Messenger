@@ -38,6 +38,7 @@ type GossipMessage struct {
 	TTL              int         `json:"ttl"`
 	Timestamp        uint64      `json:"timestamp"`
 	DigitalSignature string      `json:"digital_signature"`
+	AcksReceived uint64 		 `json:"acks_received"`
 }
 
 type GossipNode struct {
@@ -102,7 +103,11 @@ var peerIDs []uint64
 
 var nodeIDs []uint64
 
+var msgsToProcess []GossipMessage
+
 var isCensorshipAttackerNode bool
+var blockChainState bool
+
 
 func init() {
 	gob.Register(&consensus.Transaction{})
@@ -218,8 +223,9 @@ func (gn *GossipNetwork) authenticateMessage(msg GossipMessage) bool {
 }
 
 // InitializeGossipNetwork sets up the complete gossip network
-func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool) (*GossipNetwork, error) {
+func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool, toggleBlockchain bool) (*GossipNetwork, error) {
 	isCensorshipAttackerNode = toggleAttacker
+	blockChainState = toggleBlockchain
 
 	fmt.Println("Initializing integrated gossip network...")
 	fmt.Println(PublicKeyToID(GetYggdrasilNodeInfo().Key))
@@ -269,7 +275,10 @@ func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool) (*
 		nodeIDs = append(nodeIDs, uint64(i))
 	}
 
-	nodes = consensus.InitializeConsensus(len(nodeIDs), nodeIDs)
+	if (blockChainState){
+		nodes = consensus.InitializeConsensus(len(nodeIDs), nodeIDs)
+	}
+	
 
 	// Start the integrated network
 	gossipNet.Start()
@@ -554,23 +563,56 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 		}
 
 
-		// sending acknowledgement message back to peer
+		// sending acknowledgement message back to peers
 		gn.GossipMessage("ack", "broadcast", msg, msg.OriginID, msg.RoomID, "")
 
-		// Doesent store message content (apart from sender, type, digital signature and timestamp)
-		tx := consensus.NewTransaction(msg.PublicKey, "chat", msg.DigitalSignature, msg.Timestamp, msg.RoomID)
+		if (blockChainState){
+			// Doesent store message content (apart from sender, type, digital signature and timestamp)
+			// tx := consensus.NewTransaction(msg.PublicKey, "chat", msg.DigitalSignature, msg.Timestamp, msg.RoomID)
 
-		var nodeIndex int
+			// var nodeIndex int
 
-		for i, node := range nodes {
-			if node.ID == PublicKeyToNodeID(msg.PublicKey){
-				nodeIndex = i
-			}
+			// for i, node := range nodes {
+			// 	if node.ID == PublicKeyToNodeID(msg.PublicKey){
+			// 		nodeIndex = i
+			// 	}
+			// }
+
+			// nodes[nodeIndex].HB.AddTransaction(tx)
+
+			// fmt.Println("Added Message as Transaction")
+
+			msg.AcksReceived = 0
+			msgsToProcess = append(msgsToProcess, msg)
+			
+
+			go func(){
+				msgDigitalSignature := msg.DigitalSignature // potential race condition
+				yggpeers, err := network.GetYggdrasilPeers("unique")
+
+				if (err != nil) {
+					fmt.Println(err)
+				}
+
+				ackThreshold :=  uint64(len(yggpeers) / 3) * 2
+
+				timeThreshold := 0
+
+				for timeThreshold <= 15 {
+					
+					if (msgsToProcess[FindMessageIndex(msgDigitalSignature)].AcksReceived >= ackThreshold){
+						// Save to blockchain
+						fmt.Println("Yay")
+					} else{
+						time.Sleep(1 * time.Second)
+						timeThreshold++
+					}
+				}
+				
+
+			}()
 		}
-
-		nodes[nodeIndex].HB.AddTransaction(tx)
-
-		fmt.Println("Added Message as Transaction")
+		
 
 	case "ack":
 		dataBytes, err := json.Marshal(msg.Data)
@@ -585,30 +627,30 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 			log.Println("Error unmarshaling into GossipMessage:", err)
 			return
 		}
-
 		
-		tx := consensus.NewTransaction(ackmsg.PublicKey, "chat", ackmsg.DigitalSignature, ackmsg.Timestamp, ackmsg.RoomID)
+		if (blockChainState){
+			// tx := consensus.NewTransaction(ackmsg.PublicKey, "chat", ackmsg.DigitalSignature, ackmsg.Timestamp, ackmsg.RoomID)
 
-		var nodeIndex int
+			// var nodeIndex int
 
-		for i, node := range nodes {
-			if node.ID == PublicKeyToNodeID(msg.PublicKey){
-				nodeIndex = i
-			}
+			// for i, node := range nodes {
+			// 	if node.ID == PublicKeyToNodeID(msg.PublicKey){
+			// 		nodeIndex = i
+			// 	}
+			// }
+
+			// nodes[nodeIndex].HB.AddTransaction(tx)
+			// fmt.Println("Added Message as Transaction")
+
+
+			msgsToProcess[FindMessageIndex(ackmsg.DigitalSignature)].AcksReceived += 1
+
+			
 		}
-
-		nodes[nodeIndex].HB.AddTransaction(tx)
-
+		
 		fmt.Println("Received ack from: ")
 		fmt.Println(msg.OriginID)
 
-		fmt.Println("Added Message as Transaction")
-		
-
-		
-
-
-		
 		 
 	// case "heartbeat":
 	// 	// Update peer last seen time
@@ -712,9 +754,12 @@ func (gn *GossipNetwork) forwardGossipMessage(msg GossipMessage) {
 
 // GossipMessage sends a custom message to the network
 func (gn *GossipNetwork) GossipMessage(msgType, category string, data interface{}, targetID uint64, roomID string, publicKeyStr string) {
+	// get timestamp 
+	timestamp := time.Now().Format(time.RFC3339)
+	
 	// Create message data
 	messageData := fmt.Sprintf("%v", data)
-	messageBytes := []byte(messageData)
+	messageBytes := []byte(messageData + timestamp) // ensures unique signature
 
 	// Sign the message
 	signature := gn.SignMessage(messageBytes)
@@ -728,7 +773,13 @@ func (gn *GossipNetwork) GossipMessage(msgType, category string, data interface{
 		publicKeyHex = publicKeyStr
 	}
 
-	
+
+	// Parse the timestamp into a time.Time object
+	parsedTime, err := time.Parse(time.RFC3339, timestamp)
+	if err != nil {
+		fmt.Println("Error parsing timestamp:", err)
+		return
+	}
 
 	gossipMsg := GossipMessage{
 		PublicKey:        publicKeyHex,
@@ -740,7 +791,7 @@ func (gn *GossipNetwork) GossipMessage(msgType, category string, data interface{
 		RoomID:           roomID,
 		MessageID:        generateMessageID(),
 		TTL:              10,
-		Timestamp:        uint64(time.Now().Unix()),
+		Timestamp:        uint64(parsedTime.Unix()),
 		DigitalSignature: signatureHex,
 	}
 
@@ -874,4 +925,16 @@ func PublicKeyToNodeID(hexStr string) uint64 {
 	}
 
 	return uint64(0)
+}
+
+
+// Function to find the index of a message by DigitalSignature
+func FindMessageIndex(lookupSignature string) int {
+	for i, msg := range msgsToProcess {
+		if msg.DigitalSignature == lookupSignature {
+			return i
+		}
+	}
+	// Return -1 if no matching message is found
+	return -1
 }

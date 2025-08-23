@@ -19,9 +19,17 @@ var roomID string = "room-xyz-987" // mock room IDd
 
 func main() {
 
-	// Wait for message from statcollector
-	// ReceiveStartMessage(":3002")
+	// Singular Attackers
+	RunGossipTestControlVM1(false, 1)
 
+	// A=1 F=2
+	RunGossipTestControlVM1(false, 2)
+
+	// A=1 F=3
+	RunGossipTestControlVM1(false, 3)
+
+
+	// Multiple attackers
 	// // A=1 F=1
 	// RunGossipTestControlVM1(false, 1)
 
