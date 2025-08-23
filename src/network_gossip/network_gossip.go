@@ -98,6 +98,10 @@ type GossipNetwork struct {
 	disableAuth bool
 	privateKey  ed25519.PrivateKey
 	publicKey   ed25519.PublicKey
+
+	// Message processing
+	msgsToProcess []GossipMessage
+	processedAcks map[string]map[string]bool // messageID -> peerPublicKey -> bool
 }
 
 var nodes []*consensus.Server
@@ -130,6 +134,8 @@ func NewGossipNetwork(nodeID uint64, roomID string, port uint64) *GossipNetwork 
 		privateKey:     privateKey,
 		publicKey:      publicKey,
 		disableAuth:    false, // Set to true to disable authentication
+		msgsToProcess:  make([]GossipMessage, 0),
+		processedAcks:  make(map[string]map[string]bool),
 	}
 }
 
@@ -660,79 +666,65 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 
 			// fmt.Println("Added Message as Transaction")
 
+			// Initialize acks received counter
 			msg.AcksReceived = 0
-			msgsToProcess = append(msgsToProcess, msg)
+			gn.msgsToProcess = append(gn.msgsToProcess, msg)
 
-			go func() {
-				msgDigitalSignature := msg.Signature // potential race condition
-				yggpeers, err := network.GetYggdrasilPeers("unique")
+			// Start goroutine to wait for acks
+			go func(messageID string) {
+				time.Sleep(15 * time.Second)
 
-				if err != nil {
-					fmt.Println("Error getting yggdrasil peers:", err)
-					return
-				}
+				// Find the message and check if it received enough acks
+				for i, processingMsg := range gn.msgsToProcess {
+					if processingMsg.ID == messageID {
+						if processingMsg.AcksReceived >= 3 {
+							// Save to blockchain
+							chatBlockData := fmt.Sprintf("CHAT_MSG{Sender: %s, Type: %s, Data: %s, Timestamp: %d, Signature: %s}",
+								processingMsg.PublicKey, processingMsg.Type, processingMsg.Data, processingMsg.Timestamp, processingMsg.Signature)
 
-				ackThreshold := uint64(len(yggpeers) / 2) // 50% of peers must acknowledge
-				if ackThreshold < 3 {
-					ackThreshold = 3 // Minimum threshold of 3 acks
-				}
+							if err := blockchain.AddBlock(chatBlockData, msg.RoomID); err != nil {
+								fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
+							} else {
+								fmt.Printf("Yay\n")
+							}
 
-				fmt.Printf("Waiting for %d acks for message %s\n", ackThreshold, msgDigitalSignature)
-
-				timeThreshold := 0
-				for timeThreshold <= 15 {
-
-					if msgsToProcess[FindMessageIndex(msgDigitalSignature)].AcksReceived >= int(ackThreshold) {
-						// Save to blockchain
-						fmt.Println("Yay")
-						fmt.Printf("Message %s has received %d acks, threshold is %d\n", msgDigitalSignature, msgsToProcess[FindMessageIndex(msgDigitalSignature)].AcksReceived, ackThreshold)
-
-						// Save message to blockchain after receiving enough acks
-						blockData := fmt.Sprintf("CHAT_MSG{Sender: %s, Type: %s, Data: %s, Timestamp: %d, Signature: %s}",
-							msg.PublicKey, msg.Type, msg.Data, msg.Timestamp, msg.Signature)
-
-						if err := blockchain.AddBlock(blockData, msg.RoomID); err != nil {
-							fmt.Printf("Failed to save message to blockchain: %v\n", err)
+							// Remove from processing list
+							gn.msgsToProcess = append(gn.msgsToProcess[:i], gn.msgsToProcess[i+1:]...)
 						} else {
-							fmt.Printf("Successfully saved message to blockchain in room %s\n", msg.RoomID)
+							fmt.Printf("Message %s did not receive enough acks within timeout period. Received: %d, Required: 3\n", messageID, processingMsg.AcksReceived)
 						}
-
-						// Remove message from processing queue
-						msgIndex := FindMessageIndex(msgDigitalSignature)
-						if msgIndex != -1 {
-							msgsToProcess = append(msgsToProcess[:msgIndex], msgsToProcess[msgIndex+1:]...)
-						}
-
-						return
+						break
 					}
-
-					time.Sleep(1 * time.Second)
-					timeThreshold++
 				}
-
-				// If we reach here, the message didn't get enough acks in time
-				fmt.Printf("Message %s did not receive enough acks within timeout period\n", msgDigitalSignature)
-
-				// Remove message from processing queue
-				msgIndex := FindMessageIndex(msgDigitalSignature)
-				if msgIndex != -1 {
-					msgsToProcess = append(msgsToProcess[:msgIndex], msgsToProcess[msgIndex+1:]...)
-				}
-			}()
+			}(msg.ID)
 		}
 
 	case "ack":
 		// Extract message ID from acknowledgment
 		parts := strings.Split(msg.Data, " ")
+		var messageID string
 		if len(parts) >= 4 && strings.Contains(msg.Data, "ACK for message ") {
-			messageID := parts[3]
+			messageID = parts[3] // "ACK for message <id> from <publicKey>"
+		}
 
-			if blockChainState {
-				// Increment ack count for the referenced message
-				for i, processingMsg := range msgsToProcess {
-					if processingMsg.ID == messageID {
-						msgsToProcess[i].AcksReceived++
-						break
+		if blockChainState {
+			// Check if we've already processed this ack from this peer
+			if gn.processedAcks[messageID] == nil {
+				gn.processedAcks[messageID] = make(map[string]bool)
+			}
+
+			if !gn.processedAcks[messageID][msg.PublicKey] {
+				// Mark this ack as processed from this peer
+				gn.processedAcks[messageID][msg.PublicKey] = true
+
+				// Find the message by the extracted message ID and increment counter
+				if messageID != "" {
+					for i, processingMsg := range gn.msgsToProcess {
+						if processingMsg.ID == messageID {
+							gn.msgsToProcess[i].AcksReceived++
+							fmt.Printf("Message %s has received %d acks, threshold is 3\n", messageID, gn.msgsToProcess[i].AcksReceived)
+							break
+						}
 					}
 				}
 			}
@@ -743,8 +735,6 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 
 			if err := blockchain.AddBlock(ackBlockData, msg.RoomID); err != nil {
 				fmt.Printf("Failed to save ack message to blockchain: %v\n", err)
-			} else {
-				fmt.Printf("Successfully saved ack message to blockchain in room %s\n", msg.RoomID)
 			}
 		}
 
