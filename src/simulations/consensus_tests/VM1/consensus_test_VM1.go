@@ -33,7 +33,7 @@ func RunConsensusTestControlVM1() {
 		fmt.Println(err)
 	}
 
-	gossipNet.DisableAuthentication()
+	// gossipNet.DisableAuthentication()
 
 	time.Sleep(time.Second * 5)
 	gossipNet.GossipMessage("chat", "broadcast", "I hope i don't get censored24242!", 1, roomID, "")
