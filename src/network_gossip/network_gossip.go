@@ -895,11 +895,7 @@ func (gn *GossipNetwork) GossipMessage(msgType, category string, data interface{
 	// Get our public key as hex
 	publicKeyHex := hex.EncodeToString(gn.publicKey)
 
-	// Sign the message
-	messageBytes := []byte(fmt.Sprintf("%v", data))
-	signature := gn.SignMessage(messageBytes)
-	signatureHex := hex.EncodeToString(signature)
-
+	// Create the message first
 	gossipMsg := GossipMessage{
 		ID:        generateMessageID(),
 		PublicKey: publicKeyHex,
@@ -910,8 +906,23 @@ func (gn *GossipNetwork) GossipMessage(msgType, category string, data interface{
 		TargetID:  fmt.Sprintf("%d", targetID), // Convert uint64 to string
 		RoomID:    roomID,
 		Timestamp: time.Now().Unix(), // Use Unix timestamp instead of string
-		Signature: signatureHex,
+		TTL:       10,                // Set default TTL
 	}
+
+	// Sign the message using the same format as verification
+	messageBytes := []byte(fmt.Sprintf("%s%s%s%d%d", gossipMsg.ID, gossipMsg.Type, gossipMsg.Data, gossipMsg.Timestamp, gossipMsg.TTL))
+
+	// Debug logging for signing in GossipMessage
+	fmt.Printf("GossipMessage signing debug:\n")
+	fmt.Printf("  Message ID: '%s'\n", gossipMsg.ID)
+	fmt.Printf("  Message Type: '%s'\n", gossipMsg.Type)
+	fmt.Printf("  Message Data: '%s'\n", gossipMsg.Data)
+	fmt.Printf("  Message Timestamp: %d\n", gossipMsg.Timestamp)
+	fmt.Printf("  Message TTL: %d\n", gossipMsg.TTL)
+	fmt.Printf("  Message bytes to sign: '%s'\n", string(messageBytes))
+
+	signature := gn.SignMessage(messageBytes)
+	gossipMsg.Signature = hex.EncodeToString(signature)
 
 	// Add to our own processing first
 	gn.HandleGossipMessage(gossipMsg)
