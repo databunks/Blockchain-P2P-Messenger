@@ -706,6 +706,16 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 			// Add message to processing list
 			gn.msgsToProcess = append(gn.msgsToProcess, &msg)
 			fmt.Printf("NODE %d: SUCCESS - Added message %s to msgsToProcess, total count: %d\n", gn.nodeID, msg.ID, len(gn.msgsToProcess))
+
+			// IMPORTANT: Update the message in msgsToProcess with the correct AcksReceived count
+			// Find the message we just added and update its AcksReceived
+			for i, processingMsg := range gn.msgsToProcess {
+				if processingMsg.ID == msg.ID {
+					gn.msgsToProcess[i].AcksReceived = msg.AcksReceived
+					fmt.Printf("NODE %d: Updated message %s in msgsToProcess with %d acks\n", gn.nodeID, msg.ID, msg.AcksReceived)
+					break
+				}
+			}
 			gn.gossipMutex.Unlock()
 
 			// Start goroutine to wait for acks with timeout
