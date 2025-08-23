@@ -203,6 +203,13 @@ func (gn *GossipNetwork) authenticateMessage(msg GossipMessage, peer GossipNode)
 		return true
 	}
 
+	// Debug logging
+	fmt.Printf("Authenticating message from peer: ID=%d, PublicKey='%s', Address='%s'\n",
+		peer.ID, peer.PublicKey, peer.Address)
+	fmt.Printf("Message details: Sender='%s', PublicKey='%s', RoomID='%s'\n",
+		msg.Sender, msg.PublicKey, msg.RoomID)
+	fmt.Printf("Current room ID: '%s'\n", gn.roomID)
+
 	// Check if peer is in the same room
 	if !gn.isInRoom(peer.PublicKey) {
 		fmt.Printf("Authentication failed: peer %s not in room %s\n", peer.PublicKey, gn.roomID)
@@ -258,14 +265,54 @@ func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool, to
 
 		// Add to gossip network
 		gossipNet.gossipPeers[peerID] = &GossipNode{
-			ID:       peerID,
-			Address:  yggPeer.Address, // Use Yggdrasil IP address
-			LastSeen: time.Now(),
-			IsAlive:  true,
+			ID:        peerID,
+			Address:   yggPeer.Address, // Use Yggdrasil IP address
+			PublicKey: yggPeer.Key,     // Fix: Set the PublicKey field
+			LastSeen:  time.Now(),
+			IsAlive:   true,
 		}
 
 		fmt.Printf("Added Yggdrasil peer to gossip network: ID=%d, Address=%s, Key=%s\n",
 			peerID, yggPeer.Address, yggPeer.Key)
+	}
+
+	// Add current node to gossip peers (so it can authenticate its own messages)
+	currentNodeInfo := GetYggdrasilNodeInfo()
+	currentNodeID := gossipNet.PublicKeyToID(currentNodeInfo.Key)
+
+	// Only add if not already present
+	if _, exists := gossipNet.gossipPeers[currentNodeID]; !exists {
+		gossipNet.gossipPeers[currentNodeID] = &GossipNode{
+			ID:        currentNodeID,
+			Address:   currentNodeInfo.Address,
+			PublicKey: currentNodeInfo.Key,
+			LastSeen:  time.Now(),
+			IsAlive:   true,
+		}
+		fmt.Printf("Added current node to gossip network: ID=%d, Address=%s, Key=%s\n",
+			currentNodeID, currentNodeInfo.Address, currentNodeInfo.Key)
+	}
+
+	// Ensure current node is in the room's peer list
+	currentPeers := peerDetails.GetPeersInRoom(roomID)
+
+	// Check if current node is already in the room
+	currentNodeInRoom := false
+	for _, peer := range currentPeers {
+		if peer.PublicKey == currentNodeInfo.Key {
+			currentNodeInRoom = true
+			break
+		}
+	}
+
+	// Add current node to room if not present
+	if !currentNodeInRoom {
+		err := peerDetails.AddPeer(currentNodeInfo.Key, currentNodeInfo.Address, true, roomID)
+		if err != nil {
+			fmt.Printf("Warning: Failed to add current node to room: %v\n", err)
+		} else {
+			fmt.Printf("Added current node to room %s\n", roomID)
+		}
 	}
 
 	peers := peerDetails.GetPeersInRoom(roomID)
@@ -510,11 +557,24 @@ func (gn *GossipNetwork) HandleGossipMessage(msg GossipMessage) {
 
 	// Find the peer to authenticate against
 	var peer GossipNode
+	peerFound := false
 	for _, p := range gn.gossipPeers {
 		if p.PublicKey == msg.PublicKey {
 			peer = *p
+			peerFound = true
+			fmt.Printf("Found peer for authentication: ID=%d, PublicKey='%s', Address='%s'\n",
+				peer.ID, peer.PublicKey, peer.Address)
 			break
 		}
+	}
+
+	if !peerFound {
+		fmt.Printf("Peer not found for public key: %s\n", msg.PublicKey)
+		fmt.Printf("Available peers in gossip network:\n")
+		for id, p := range gn.gossipPeers {
+			fmt.Printf("  ID=%d, PublicKey='%s', Address='%s'\n", id, p.PublicKey, p.Address)
+		}
+		return
 	}
 
 	// Authenticate the message
@@ -543,9 +603,15 @@ func (gn *GossipNetwork) shouldProcessMessage(msg GossipMessage) bool {
 	return msg.RoomID == gn.roomID
 }
 
-func (gn *GossipNetwork) isInRoom(roomID string) bool {
-	// Check if we're in the specified room
-	return roomID == gn.roomID
+func (gn *GossipNetwork) isInRoom(publicKey string) bool {
+	// Check if the public key is in the room's peer list
+	peers := peerDetails.GetPeersInRoom(gn.roomID)
+	for _, peer := range peers {
+		if peer.PublicKey == publicKey {
+			return true
+		}
+	}
+	return false
 }
 
 func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
