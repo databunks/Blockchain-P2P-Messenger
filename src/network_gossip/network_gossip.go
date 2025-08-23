@@ -206,7 +206,8 @@ func (gn *GossipNetwork) authenticateMessage(msg GossipMessage) bool {
 	for _, peer := range peers {
 		if msg.PublicKey == peer.PublicKey {
 			// Validate the digital signature
-			messageBytes := []byte(fmt.Sprintf("%v%v", msg.Data, msg.Timestamp))
+			msgDataString := fmt.Sprintf("%v", msg.Data)
+			messageBytes := []byte(msgDataString + msg.Timestamp)
 			if !gn.VerifyMessageSignature(messageBytes, msg.DigitalSignature, peer.PublicKey) {
 				log.Printf("Invalid signature for message from %s\nMessage: %v\nSignature: %s",
 					msg.PublicKey, msg.Data, msg.DigitalSignature)
