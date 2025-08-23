@@ -723,6 +723,9 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 			messageID = parts[3] // "ACK for message <id> from <publicKey>"
 		}
 
+		fmt.Printf("Processing ack for message ID: %s\n", messageID)
+		fmt.Printf("Current msgsToProcess count: %d\n", len(gn.msgsToProcess))
+
 		if blockChainState {
 			// Check if we've already processed this ack from this peer
 			if gn.processedAcks[messageID] == nil {
@@ -735,7 +738,9 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 
 				// Find the message by the extracted message ID and increment counter
 				if messageID != "" {
+					found := false
 					for i, processingMsg := range gn.msgsToProcess {
+						fmt.Printf("Checking message %s against %s\n", processingMsg.ID, messageID)
 						if processingMsg.ID == messageID {
 							gn.msgsToProcess[i].AcksReceived++
 							fmt.Printf("Message %s has received %d acks, threshold is %d\n", messageID, gn.msgsToProcess[i].AcksReceived, thresholdAcks)
@@ -755,8 +760,13 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 								// Remove from processing list
 								gn.msgsToProcess = append(gn.msgsToProcess[:i], gn.msgsToProcess[i+1:]...)
 							}
+							found = true
 							break
 						}
+					}
+
+					if !found {
+						fmt.Printf("WARNING: Message %s not found in msgsToProcess list!\n", messageID)
 					}
 				}
 
