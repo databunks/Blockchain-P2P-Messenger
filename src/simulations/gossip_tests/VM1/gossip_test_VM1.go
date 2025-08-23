@@ -3,7 +3,6 @@ package gossip_test_VM1
 import (
 	"blockchain-p2p-messenger/src/derivationFunctions"
 	"blockchain-p2p-messenger/src/network"
-	"blockchain-p2p-messenger/src/network_gossip"
 	"blockchain-p2p-messenger/src/peerDetails"
 	"fmt"
 	"log"
@@ -79,24 +78,24 @@ func RunGossipTestControlVM1(runAsAttacker bool, fanout int){
 
 
 
-func RunGossipTestImplementationVM1(runAsAttacker bool){
-	peerDetails.AddPeer(publicKey_VM1, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey_VM1), isAdmin, roomID)
-	peerDetails.AddPeer(publicKey2_VM2, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey2_VM2), isAdmin, roomID)
-	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), isAdmin, roomID)
-	peerDetails.AddPeer(PublicKey4_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(PublicKey4_VM4), isAdmin, roomID)
+// func RunGossipTestImplementationVM1(runAsAttacker bool){
+// 	peerDetails.AddPeer(publicKey_VM1, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey_VM1), isAdmin, roomID)
+// 	peerDetails.AddPeer(publicKey2_VM2, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey2_VM2), isAdmin, roomID)
+// 	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), isAdmin, roomID)
+// 	peerDetails.AddPeer(PublicKey4_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(PublicKey4_VM4), isAdmin, roomID)
 	
 
-	gossipNet, err := gossipnetwork.InitializeGossipNetwork(roomID, 3000, runAsAttacker)
+// 	gossipNet, err := gossipnetwork.InitializeGossipNetwork(roomID, 3000, runAsAttacker)
 
-	if (err != nil){
-		fmt.Println(err)
-		return
-	}
+// 	if (err != nil){
+// 		fmt.Println(err)
+// 		return
+// 	}
 
-	// gossip message is sent from here to random nodes on network
-	gossipNet.GossipMessage("chat", "broadcast", "I hope I don't get censored!", 0, roomID, "")
+// 	// gossip message is sent from here to random nodes on network
+// 	gossipNet.GossipMessage("chat", "broadcast", "I hope I don't get censored!", 0, roomID, "")
 
-}
+// }
 
 
 func ReceiveStartMessage(port int) {

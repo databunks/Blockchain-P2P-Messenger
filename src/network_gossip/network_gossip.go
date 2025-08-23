@@ -36,7 +36,7 @@ type GossipMessage struct {
 	RoomID           string      `json:"room_id"`
 	MessageID        string      `json:"message_id"`
 	TTL              int         `json:"ttl"`
-	Timestamp        uint64      `json:"timestamp"`
+	Timestamp        string     `json:"timestamp"`
 	DigitalSignature string      `json:"digital_signature"`
 	AcksReceived uint64 		 `json:"acks_received"`
 }
@@ -206,7 +206,7 @@ func (gn *GossipNetwork) authenticateMessage(msg GossipMessage) bool {
 	for _, peer := range peers {
 		if msg.PublicKey == peer.PublicKey {
 			// Validate the digital signature
-			messageBytes := []byte(fmt.Sprintf("%v", msg.Data))
+			messageBytes := []byte(fmt.Sprintf("%v%v", msg.Data, msg.Timestamp))
 			if !gn.VerifyMessageSignature(messageBytes, msg.DigitalSignature, peer.PublicKey) {
 				log.Printf("Invalid signature for message from %s\nMessage: %v\nSignature: %s",
 					msg.PublicKey, msg.Data, msg.DigitalSignature)
@@ -604,6 +604,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 						// Save to blockchain
 						fmt.Println("Yay")
 					} else{
+						//fmt.Printf("Exiting... %d\nAcksReceived: %d\nMSG: %s", timeThreshold, msgsToProcess[FindMessageIndex(msgDigitalSignature)].AcksReceived, msgsToProcess[FindMessageIndex(msgDigitalSignature)].DigitalSignature)
 						time.Sleep(1 * time.Second)
 						timeThreshold++
 					}
@@ -642,8 +643,15 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 			// nodes[nodeIndex].HB.AddTransaction(tx)
 			// fmt.Println("Added Message as Transaction")
 
+			fmt.Println(msgsToProcess)
+			fmt.Println("Incrementing") // no 
+			fmt.Println(ackmsg.DigitalSignature)
 
-			msgsToProcess[FindMessageIndex(ackmsg.DigitalSignature)].AcksReceived += 1
+			if (FindMessageIndex(ackmsg.DigitalSignature) != -1){
+				msgsToProcess[FindMessageIndex(ackmsg.DigitalSignature)].AcksReceived += 1
+				fmt.Printf("Incremented to %d", msgsToProcess[FindMessageIndex(ackmsg.DigitalSignature)].AcksReceived )
+			}
+			
 
 			
 		}
@@ -774,12 +782,12 @@ func (gn *GossipNetwork) GossipMessage(msgType, category string, data interface{
 	}
 
 
-	// Parse the timestamp into a time.Time object
-	parsedTime, err := time.Parse(time.RFC3339, timestamp)
-	if err != nil {
-		fmt.Println("Error parsing timestamp:", err)
-		return
-	}
+	// // Parse the timestamp into a time.Time object
+	// parsedTime, err := time.Parse(time.RFC3339, timestamp)
+	// if err != nil {
+	// 	fmt.Println("Error parsing timestamp:", err)
+	// 	return
+	// }
 
 	gossipMsg := GossipMessage{
 		PublicKey:        publicKeyHex,
@@ -791,7 +799,7 @@ func (gn *GossipNetwork) GossipMessage(msgType, category string, data interface{
 		RoomID:           roomID,
 		MessageID:        generateMessageID(),
 		TTL:              10,
-		Timestamp:        uint64(parsedTime.Unix()),
+		Timestamp:        timestamp,
 		DigitalSignature: signatureHex,
 	}
 
