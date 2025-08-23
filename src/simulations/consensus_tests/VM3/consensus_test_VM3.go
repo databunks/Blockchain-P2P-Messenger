@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"time"
+
 )
 
 // N = 4
@@ -31,13 +31,8 @@ func RunConsensusTestControlVM3(){
 
 	
 
-	gossipNet, err := gossipnetwork.InitializeGossipNetwork(roomID, 3000, false, false)
-	if (err != nil){
-		fmt.Println(err)
-	}
+	gossipnetwork.InitializeGossipNetwork(roomID, 3000, false, false)
 
-	time.Sleep(time.Second * 5)
-	gossipNet.GossipMessage("chat", "broadcast", "I hope i don't get censored24242!", 1, roomID, "")
 
 }
 

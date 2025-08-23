@@ -2,6 +2,9 @@ package main
 
 import (
 	"blockchain-p2p-messenger/src/consensus"
+	gossipnetwork "blockchain-p2p-messenger/src/network_gossip"
+	consensustestsVM1 "blockchain-p2p-messenger/src/simulations/consensus_tests/VM1"
+	gossip_test_VM1 "blockchain-p2p-messenger/src/simulations/gossip_tests/VM1"
 	"encoding/gob"
 )
 
@@ -79,27 +82,7 @@ func main() {
 
 	// network.InitializeNetwork(roomID, true)
 
-
-	
-
-	// A=1 F=1
-	// gossip_test_VM1.RunGossipTestControlVM1(false, 1)
-
-	 // Initialize 4 nodes with IDs 0..3
-    nodes := consensus.InitializeConsensus(4, []uint64{0, 1, 2, 3})
-
-    // Create transactions
-    txGood := consensus.NewTransaction("blahblah", "pizza", "good", 302, "room-xyz")
-    txBad := consensus.NewTransaction("blahblah", "pizza", "bad", 302, "room-xyz")
-
-    // Add transactions:
-    // Faulty node 3 proposes the "bad" tx
-    nodes[3].HB.AddTransaction(txBad)
-
-    // Honest nodes 0,1,2 propose the "good" tx
-    nodes[0].HB.AddTransaction(txGood)
-    nodes[1].HB.AddTransaction(txGood)
-    nodes[2].HB.AddTransaction(txGood)
+	consensustestsVM1.RunConsensusTestControlVM1()
 	
 
 
