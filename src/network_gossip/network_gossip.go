@@ -688,7 +688,9 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 			// Check if we have pending acks for this message
 			if pendingAcks, exists := gn.pendingAcks[msg.ID]; exists {
 				fmt.Printf("NODE %d: Found %d pending acks for message %s\n", gn.nodeID, len(pendingAcks), msg.ID)
+				fmt.Printf("NODE %d: Initial AcksReceived: %d\n", gn.nodeID, msg.AcksReceived)
 				for _, pendingAck := range pendingAcks {
+					fmt.Printf("NODE %d: Processing pending ack from %s\n", gn.nodeID, pendingAck.PublicKey)
 					// Process each pending ack
 					if gn.processedAcks[msg.ID] == nil {
 						gn.processedAcks[msg.ID] = make(map[string]bool)
@@ -697,8 +699,11 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 						gn.processedAcks[msg.ID][pendingAck.PublicKey] = true
 						msg.AcksReceived++
 						fmt.Printf("NODE %d: Processed pending ack from %s, total acks: %d\n", gn.nodeID, pendingAck.PublicKey, msg.AcksReceived)
+					} else {
+						fmt.Printf("NODE %d: Skipping already processed ack from %s\n", gn.nodeID, pendingAck.PublicKey)
 					}
 				}
+				fmt.Printf("NODE %d: Final AcksReceived after processing pending acks: %d\n", gn.nodeID, msg.AcksReceived)
 				// Clear pending acks for this message
 				delete(gn.pendingAcks, msg.ID)
 			}
