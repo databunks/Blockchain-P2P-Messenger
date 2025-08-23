@@ -661,84 +661,71 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 
 		fmt.Printf("blockChainState: %v\n", blockChainState)
 		if blockChainState {
-			// Check if we already have this message in processing
-			messageAlreadyProcessing := false
-			for _, processingMsg := range gn.msgsToProcess {
-				if processingMsg.ID == msg.ID {
-					messageAlreadyProcessing = true
-					break
+			// Initialize acks received counter
+			msg.AcksReceived = 0
+
+			// Check if we have pending acks for this message
+			if pendingAcks, exists := gn.pendingAcks[msg.ID]; exists {
+				fmt.Printf("Found %d pending acks for message %s, processing them now\n", len(pendingAcks), msg.ID)
+				for _, pendingAck := range pendingAcks {
+					// Process each pending ack
+					if gn.processedAcks[msg.ID] == nil {
+						gn.processedAcks[msg.ID] = make(map[string]bool)
+					}
+					if !gn.processedAcks[msg.ID][pendingAck.PublicKey] {
+						gn.processedAcks[msg.ID][pendingAck.PublicKey] = true
+						msg.AcksReceived++
+						fmt.Printf("Applied pending ack from %s, total acks: %d\n", pendingAck.PublicKey, msg.AcksReceived)
+					}
 				}
+				// Clear pending acks for this message
+				delete(gn.pendingAcks, msg.ID)
+			} else {
+				fmt.Printf("No pending acks found for message %s\n", msg.ID)
 			}
-			fmt.Printf("messageAlreadyProcessing: %v\n", messageAlreadyProcessing)
 
-			// Only add to processing if we don't already have it
-			if !messageAlreadyProcessing {
-				// Initialize acks received counter
-				msg.AcksReceived = 0
+			gn.msgsToProcess = append(gn.msgsToProcess, msg)
+			fmt.Printf("Added message %s to msgsToProcess, total count: %d\n", msg.ID, len(gn.msgsToProcess))
 
-				// Check if we have pending acks for this message
-				if pendingAcks, exists := gn.pendingAcks[msg.ID]; exists {
-					fmt.Printf("Found %d pending acks for message %s, processing them now\n", len(pendingAcks), msg.ID)
-					for _, pendingAck := range pendingAcks {
-						// Process each pending ack
-						if gn.processedAcks[msg.ID] == nil {
-							gn.processedAcks[msg.ID] = make(map[string]bool)
-						}
-						if !gn.processedAcks[msg.ID][pendingAck.PublicKey] {
-							gn.processedAcks[msg.ID][pendingAck.PublicKey] = true
-							msg.AcksReceived++
-							fmt.Printf("Applied pending ack from %s, total acks: %d\n", pendingAck.PublicKey, msg.AcksReceived)
-						}
-					}
-					// Clear pending acks for this message
-					delete(gn.pendingAcks, msg.ID)
-				} else {
-					fmt.Printf("No pending acks found for message %s\n", msg.ID)
-				}
+			// Start goroutine to wait for acks
+			go func(messageID string) {
+				// Check every second instead of waiting full 15 seconds
+				for i := 0; i < 15; i++ {
+					time.Sleep(1 * time.Second)
 
-				gn.msgsToProcess = append(gn.msgsToProcess, msg)
-				fmt.Printf("Added message %s to msgsToProcess, total count: %d\n", msg.ID, len(gn.msgsToProcess))
-
-				// Start goroutine to wait for acks
-				go func(messageID string) {
-					// Check every second instead of waiting full 15 seconds
-					for i := 0; i < 15; i++ {
-						time.Sleep(1 * time.Second)
-
-						// Find the message and check if it received enough acks
-						for j, processingMsg := range gn.msgsToProcess {
-							if processingMsg.ID == messageID {
-								if processingMsg.AcksReceived >= thresholdAcks {
-									// Save to blockchain
-									chatBlockData := fmt.Sprintf("CHAT_MSG{Sender: %s, Type: %s, Data: %s, Timestamp: %d, Signature: %s}",
-										processingMsg.PublicKey, processingMsg.Type, processingMsg.Data, processingMsg.Timestamp, processingMsg.Signature)
-
-									if err := blockchain.AddBlock(chatBlockData, msg.RoomID); err != nil {
-										fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
-									} else {
-										fmt.Printf("Yay\n")
-									}
-
-									// Remove from processing list
-									gn.msgsToProcess = append(gn.msgsToProcess[:j], gn.msgsToProcess[j+1:]...)
-									return // Exit early once threshold is reached
-								}
-								break
-							}
-						}
-					}
-
-					// If we reach here, the message didn't get enough acks in time
-					for i, processingMsg := range gn.msgsToProcess {
+					// Find the message and check if it received enough acks
+					for j, processingMsg := range gn.msgsToProcess {
 						if processingMsg.ID == messageID {
-							fmt.Printf("Message %s did not receive enough acks within timeout period. Received: %d, Required: %d\n", messageID, processingMsg.AcksReceived, thresholdAcks)
-							// Remove from processing list
-							gn.msgsToProcess = append(gn.msgsToProcess[:i], gn.msgsToProcess[i+1:]...)
+							if processingMsg.AcksReceived >= thresholdAcks {
+								// Save to blockchain
+								chatBlockData := fmt.Sprintf("CHAT_MSG{Sender: %s, Type: %s, Data: %s, Timestamp: %d, Signature: %s}",
+									processingMsg.PublicKey, processingMsg.Type, processingMsg.Data, processingMsg.Timestamp, processingMsg.Signature)
+
+								if err := blockchain.AddBlock(chatBlockData, msg.RoomID); err != nil {
+									fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
+								} else {
+									fmt.Printf("Yay\n")
+								}
+
+								// Remove from processing list
+								gn.msgsToProcess = append(gn.msgsToProcess[:j], gn.msgsToProcess[j+1:]...)
+								return // Exit early once threshold is reached
+							}
 							break
 						}
 					}
-				}(msg.ID)
-			}
+				}
+
+				// If we reach here, the message didn't get enough acks in time
+				for i, processingMsg := range gn.msgsToProcess {
+					if processingMsg.ID == messageID {
+						fmt.Printf("Message %s did not receive enough acks within timeout period. Received: %d, Required: %d\n", messageID, processingMsg.AcksReceived, thresholdAcks)
+						// Remove from processing list
+						gn.msgsToProcess = append(gn.msgsToProcess[:i], gn.msgsToProcess[i+1:]...)
+						break
+					}
+				}
+			}(msg.ID)
 		}
 
 	case "ack":
