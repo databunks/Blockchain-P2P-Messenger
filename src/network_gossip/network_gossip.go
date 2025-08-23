@@ -171,111 +171,59 @@ func (gn *GossipNetwork) SignMessage(message []byte) []byte {
 	return signature
 }
 
-// VerifyMessageSignature checks if the message was signed correctly using the sender's public key
 func (gn *GossipNetwork) VerifyMessageSignature(messageContent []byte, signatureHex string, publicKeyHex string) bool {
-	// Decode the hex-encoded public key
 	publicKeyBytes, err := hex.DecodeString(publicKeyHex)
 	if err != nil {
-		log.Printf("Error decoding public key: %v", err)
 		return false
 	}
 
-	// Decode the hex-encoded signature
 	signatureBytes, err := hex.DecodeString(signatureHex)
 	if err != nil {
-		log.Printf("Error decoding signature: %v", err)
 		return false
 	}
 
-	// Debug: Print the verification details
-	fmt.Printf("  Verifying signature: message='%s', signature='%s', publicKey='%s'\n",
-		string(messageContent), signatureHex, publicKeyHex)
-	fmt.Printf("  Message length: %d bytes, Signature length: %d bytes, PublicKey length: %d bytes\n",
-		len(messageContent), len(signatureBytes), len(publicKeyBytes))
-
-	// Check signature validity using ed25519
-	isValid := ed25519.Verify(ed25519.PublicKey(publicKeyBytes), messageContent, signatureBytes)
-
-	if !isValid {
-		log.Println("Signature verification failed")
-	} else {
-		fmt.Printf("  Signature verification successful!\n")
-	}
-
-	return isValid
+	return ed25519.Verify(ed25519.PublicKey(publicKeyBytes), messageContent, signatureBytes)
 }
 
-// authenticateMessage authenticates a gossip message
 func (gn *GossipNetwork) authenticateMessage(msg GossipMessage, peer GossipNode) bool {
 	if gn.disableAuth {
 		return true
 	}
 
-	// Debug logging
-	fmt.Printf("Authenticating message from peer: ID=%d, PublicKey='%s', Address='%s'\n",
-		peer.ID, peer.PublicKey, peer.Address)
-	fmt.Printf("Message details: Sender='%s', PublicKey='%s', RoomID='%s'\n",
-		msg.Sender, msg.PublicKey, msg.RoomID)
-	fmt.Printf("Current room ID: '%s'\n", gn.roomID)
-
-	// Check if peer is in the same room
 	if !gn.isInRoom(peer.PublicKey) {
-		fmt.Printf("Authentication failed: peer %s not in room %s\n", peer.PublicKey, gn.roomID)
 		return false
 	}
 
-	// Verify digital signature (exclude TTL as it changes during forwarding)
+	// Verify message signature
 	messageBytes := []byte(fmt.Sprintf("%s%s%s%d", msg.ID, msg.Type, msg.Data, msg.Timestamp))
 
-	// Debug logging for signature verification
-	fmt.Printf("Signature verification debug:\n")
-	fmt.Printf("  Message ID: '%s'\n", msg.ID)
-	fmt.Printf("  Message Type: '%s'\n", msg.Type)
-	fmt.Printf("  Message Data: '%s'\n", msg.Data)
-	fmt.Printf("  Message Timestamp: %d\n", msg.Timestamp)
-	fmt.Printf("  Message TTL: %d (excluded from signature)\n", msg.TTL)
-	fmt.Printf("  Message Signature: '%s'\n", msg.Signature)
-	fmt.Printf("  Peer Public Key: '%s'\n", peer.PublicKey)
-	fmt.Printf("  Message bytes to verify: '%s'\n", string(messageBytes))
+	// Try multiple signature formats for compatibility
+	formats := [][]byte{
+		messageBytes,     // Current format
+		[]byte(msg.Data), // Legacy format
+		[]byte(fmt.Sprintf("%s%s%s", msg.ID, msg.Type, msg.Data)),                             // Alternative format
+		[]byte(fmt.Sprintf("%s%s%d", msg.Type, msg.Data, msg.Timestamp)),                      // Timestamp format
+		[]byte(fmt.Sprintf("%s%s%s%d%d", msg.ID, msg.Type, msg.Data, msg.Timestamp, msg.TTL)), // Old TTL format
+	}
 
-	// Try new format first
-	if gn.VerifyMessageSignature(messageBytes, msg.Signature, peer.PublicKey) {
-		fmt.Printf("Signature verification successful with new format\n")
-	} else {
-		// Fallback: try old format (just the data field)
-		fmt.Printf("New format verification failed, trying old format...\n")
-		oldFormatBytes := []byte(msg.Data)
-		fmt.Printf("  Old format bytes to verify: '%s'\n", string(oldFormatBytes))
+	for _, format := range formats {
+		if gn.VerifyMessageSignature(format, msg.Signature, peer.PublicKey) {
+			break
+		}
+	}
 
-		if gn.VerifyMessageSignature(oldFormatBytes, msg.Signature, peer.PublicKey) {
-			fmt.Printf("Signature verification successful with old format\n")
-		} else {
-			// Try additional formats that might have been used
-			fmt.Printf("Old format failed, trying additional formats...\n")
-
-			// Format 3: ID + Type + Data (same as new format without timestamp)
-			format3Bytes := []byte(fmt.Sprintf("%s%s%s", msg.ID, msg.Type, msg.Data))
-			fmt.Printf("  Format 3 bytes to verify: '%s'\n", string(format3Bytes))
-			if gn.VerifyMessageSignature(format3Bytes, msg.Signature, peer.PublicKey) {
-				fmt.Printf("Signature verification successful with format 3\n")
-			} else {
-				// Format 4: Type + Data + Timestamp
-				format4Bytes := []byte(fmt.Sprintf("%s%s%d", msg.Type, msg.Data, msg.Timestamp))
-				fmt.Printf("  Format 4 bytes to verify: '%s'\n", string(format4Bytes))
-				if gn.VerifyMessageSignature(format4Bytes, msg.Signature, peer.PublicKey) {
-					fmt.Printf("Signature verification successful with format 4\n")
-				} else {
-					// Format 5: Old format with TTL (before my fix)
-					format5Bytes := []byte(fmt.Sprintf("%s%s%s%d%d", msg.ID, msg.Type, msg.Data, msg.Timestamp, msg.TTL))
-					fmt.Printf("  Format 5 bytes to verify: '%s'\n", string(format5Bytes))
-					if gn.VerifyMessageSignature(format5Bytes, msg.Signature, peer.PublicKey) {
-						fmt.Printf("Signature verification successful with format 5 (old TTL format)\n")
-					} else {
-						fmt.Printf("Authentication failed: invalid signature from %s (all formats failed)\n", peer.PublicKey)
-						return false
-					}
-				}
+	if !gn.VerifyMessageSignature(messageBytes, msg.Signature, peer.PublicKey) {
+		// Try fallback formats
+		verified := false
+		for i := 1; i < len(formats); i++ {
+			if gn.VerifyMessageSignature(formats[i], msg.Signature, peer.PublicKey) {
+				verified = true
+				break
 			}
+		}
+		if !verified {
+			fmt.Printf("Authentication failed: invalid signature from %s\n", peer.PublicKey)
+			return false
 		}
 	}
 
@@ -585,17 +533,8 @@ func (gn *GossipNetwork) sendHeartbeat() {
 		PublicKey: hex.EncodeToString(gn.publicKey),
 	}
 
-	// Sign the message (exclude TTL as it changes during forwarding)
+	// Sign the message
 	messageBytes := []byte(fmt.Sprintf("%s%s%s%d", heartbeatMsg.ID, heartbeatMsg.Type, heartbeatMsg.Data, heartbeatMsg.Timestamp))
-
-	// Debug logging for signing
-	fmt.Printf("Message signing debug:\n")
-	fmt.Printf("  Message ID: '%s'\n", heartbeatMsg.ID)
-	fmt.Printf("  Message Type: '%s'\n", heartbeatMsg.Type)
-	fmt.Printf("  Message Data: '%s'\n", heartbeatMsg.Data)
-	fmt.Printf("  Message Timestamp: %d\n", heartbeatMsg.Timestamp)
-	fmt.Printf("  Message TTL: %d (excluded from signature)\n", heartbeatMsg.TTL)
-	fmt.Printf("  Message bytes to sign: '%s'\n", string(messageBytes))
 
 	signature := gn.SignMessage(messageBytes)
 	heartbeatMsg.Signature = hex.EncodeToString(signature)
@@ -621,44 +560,31 @@ func (gn *GossipNetwork) HandleGossipMessage(msg GossipMessage) {
 	gn.messageHistory[msg.ID] = true
 	gn.gossipMutex.Unlock()
 
-	// Skip processing our own heartbeat messages to avoid authentication loops
+	// Skip own heartbeat messages
 	if msg.Type == "heartbeat" && msg.PublicKey == hex.EncodeToString(gn.publicKey) {
-		fmt.Printf("Skipping own heartbeat message: %s\n", msg.ID)
 		return
 	}
 
-	// Skip signature verification for acknowledgment messages (they're internal messages)
+	// Process acknowledgments without signature verification
 	if msg.Type == "ack" {
-		fmt.Printf("Skipping signature verification for ack message: %s\n", msg.ID)
-		// Still check if peer is in room for basic security
-		if !gn.isInRoom(msg.PublicKey) {
-			fmt.Printf("Authentication failed: peer %s not in room %s\n", msg.PublicKey, gn.roomID)
-			return
+		if gn.isInRoom(msg.PublicKey) {
+			gn.processGossipMessage(msg)
 		}
-		// Process the ack message without signature verification
-		gn.processGossipMessage(msg)
-		return
+		// Don't return here - continue to forward the ack to other nodes
 	}
 
-	// Find the peer to authenticate against
+	// Find peer for authentication
 	var peer GossipNode
-	peerFound := false
+	found := false
 	for _, p := range gn.gossipPeers {
 		if p.PublicKey == msg.PublicKey {
 			peer = *p
-			peerFound = true
-			fmt.Printf("Found peer for authentication: ID=%d, PublicKey='%s', Address='%s'\n",
-				peer.ID, peer.PublicKey, peer.Address)
+			found = true
 			break
 		}
 	}
 
-	if !peerFound {
-		fmt.Printf("Peer not found for public key: %s\n", msg.PublicKey)
-		fmt.Printf("Available peers in gossip network:\n")
-		for id, p := range gn.gossipPeers {
-			fmt.Printf("  ID=%d, PublicKey='%s', Address='%s'\n", id, p.PublicKey, p.Address)
-		}
+	if !found {
 		return
 	}
 
@@ -713,11 +639,8 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 			network.SendMessageToStatCollector("Message Reached To Peer "+hex.EncodeToString(gn.publicKey), msg.RoomID, 3001)
 		}
 
-		// sending acknowledgement message back to peers
-		// Convert string sender to uint64 for GossipMessage method
+		// Send acknowledgment
 		senderID, _ := strconv.ParseUint(msg.Sender, 10, 64)
-
-		// Create a simple acknowledgment data instead of passing the entire message
 		ackData := fmt.Sprintf("ACK for message %s from %s", msg.ID, msg.PublicKey)
 		gn.GossipMessage("ack", "broadcast", ackData, senderID, msg.RoomID, "")
 
@@ -799,36 +722,19 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 		}
 
 	case "ack":
-		// Parse the acknowledgment data to extract the original message ID
-		ackData := msg.Data
-		fmt.Printf("Received acknowledgment: %s\n", ackData)
+		// Extract message ID from acknowledgment
+		parts := strings.Split(msg.Data, " ")
+		if len(parts) >= 4 && strings.Contains(msg.Data, "ACK for message ") {
+			messageID := parts[3]
 
-		// Extract message ID from ack data (format: "ACK for message <id> from <publicKey>")
-		// Parse the acknowledgment to get the actual message ID
-		var messageID string
-		if strings.Contains(ackData, "ACK for message ") {
-			parts := strings.Split(ackData, " ")
-			if len(parts) >= 4 {
-				messageID = parts[3] // "ACK for message <id> from <publicKey>"
-				fmt.Printf("Extracted message ID from ack: %s\n", messageID)
-			}
-		}
-
-		if blockChainState {
-			fmt.Println(msgsToProcess)
-			fmt.Println("Processing acknowledgment")
-
-			// Find the message by the extracted message ID
-			if messageID != "" {
+			if blockChainState {
+				// Increment ack count for the referenced message
 				for i, processingMsg := range msgsToProcess {
 					if processingMsg.ID == messageID {
-						msgsToProcess[i].AcksReceived += 1
-						fmt.Printf("Incremented acks for message %s to %d\n", processingMsg.ID, msgsToProcess[i].AcksReceived)
+						msgsToProcess[i].AcksReceived++
 						break
 					}
 				}
-			} else {
-				fmt.Printf("Could not extract message ID from ack data: %s\n", ackData)
 			}
 
 			// Save acknowledgment to blockchain
@@ -964,17 +870,8 @@ func (gn *GossipNetwork) GossipMessage(msgType, category string, data interface{
 		TTL:       10,                // Set default TTL
 	}
 
-	// Sign the message using the same format as verification (exclude TTL)
+	// Sign the message
 	messageBytes := []byte(fmt.Sprintf("%s%s%s%d", gossipMsg.ID, gossipMsg.Type, gossipMsg.Data, gossipMsg.Timestamp))
-
-	// Debug logging for signing in GossipMessage
-	fmt.Printf("GossipMessage signing debug:\n")
-	fmt.Printf("  Message ID: '%s'\n", gossipMsg.ID)
-	fmt.Printf("  Message Type: '%s'\n", gossipMsg.Type)
-	fmt.Printf("  Message Data: '%s'\n", gossipMsg.Data)
-	fmt.Printf("  Message Timestamp: %d\n", gossipMsg.Timestamp)
-	fmt.Printf("  Message TTL: %d (excluded from signature)\n", gossipMsg.TTL)
-	fmt.Printf("  Message bytes to sign: '%s'\n", string(messageBytes))
 
 	signature := gn.SignMessage(messageBytes)
 	gossipMsg.Signature = hex.EncodeToString(signature)
