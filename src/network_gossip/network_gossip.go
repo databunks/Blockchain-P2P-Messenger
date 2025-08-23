@@ -646,6 +646,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 	// Handle different message types
 	switch msg.Type {
 	case "chat":
+		fmt.Printf("NODE %d: Processing chat message: %s\n", gn.nodeID, msg.Data)
 		fmt.Printf("Processing chat message: %v\n", msg.Data)
 		fmt.Println(msg.Sender)
 
