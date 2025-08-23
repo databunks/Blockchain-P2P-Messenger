@@ -100,7 +100,7 @@ type GossipNetwork struct {
 	publicKey   ed25519.PublicKey
 
 	// Message processing
-	msgsToProcess []GossipMessage
+	msgsToProcess []*GossipMessage
 	processedAcks map[string]map[string]bool // messageID -> peerPublicKey -> bool
 	pendingAcks   map[string][]GossipMessage // messageID -> []ack messages
 }
@@ -110,8 +110,6 @@ var nodes []*consensus.Server
 var peerIDs []uint64
 
 var nodeIDs []uint64
-
-var msgsToProcess []GossipMessage
 
 var isCensorshipAttackerNode bool
 var blockChainState bool
@@ -137,7 +135,7 @@ func NewGossipNetwork(nodeID uint64, roomID string, port uint64) *GossipNetwork 
 		privateKey:     privateKey,
 		publicKey:      publicKey,
 		disableAuth:    false, // Set to true to disable authentication
-		msgsToProcess:  make([]GossipMessage, 0),
+		msgsToProcess:  make([]*GossipMessage, 0),
 		processedAcks:  make(map[string]map[string]bool),
 		pendingAcks:    make(map[string][]GossipMessage),
 	}
@@ -685,7 +683,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 				fmt.Printf("No pending acks found for message %s\n", msg.ID)
 			}
 
-			gn.msgsToProcess = append(gn.msgsToProcess, msg)
+			gn.msgsToProcess = append(gn.msgsToProcess, &msg)
 			fmt.Printf("Added message %s to msgsToProcess, total count: %d\n", msg.ID, len(gn.msgsToProcess))
 
 			// Start goroutine to wait for acks
@@ -1056,15 +1054,4 @@ func PublicKeyToNodeID(hexStr string) uint64 {
 	}
 
 	return uint64(0)
-}
-
-// Function to find the index of a message by DigitalSignature
-func FindMessageIndex(lookupSignature string) int {
-	for i, msg := range msgsToProcess {
-		if msg.Signature == lookupSignature {
-			return i
-		}
-	}
-	// Return -1 if no matching message is found
-	return -1
 }
