@@ -1,6 +1,7 @@
 package gossipnetwork
 
 import (
+	"blockchain-p2p-messenger/src/blockchain"
 	"blockchain-p2p-messenger/src/consensus"
 	"blockchain-p2p-messenger/src/network"
 	"blockchain-p2p-messenger/src/peerDetails"
@@ -18,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -27,25 +29,26 @@ import (
 
 // Gossip Protocol Types
 type GossipMessage struct {
-	PublicKey        string      `json:"public_key"`
-	Type             string      `json:"type"`
-	Category         string      `json:"category"` // "broadcast", "direct", "room_specific"
-	Data             interface{} `json:"data"`
-	OriginID         uint64      `json:"origin_id"`
-	TargetID         uint64      `json:"target_id"`
-	RoomID           string      `json:"room_id"`
-	MessageID        string      `json:"message_id"`
-	TTL              int         `json:"ttl"`
-	Timestamp        string     `json:"timestamp"`
-	DigitalSignature string      `json:"digital_signature"`
-	AcksReceived uint64 		 `json:"acks_received"`
+	ID           string `json:"id"`
+	Type         string `json:"type"`
+	Data         string `json:"data"`
+	Sender       string `json:"sender"`
+	RoomID       string `json:"room_id"`
+	Timestamp    int64  `json:"timestamp"`
+	TTL          int    `json:"ttl"`
+	PublicKey    string `json:"public_key"`
+	Signature    string `json:"signature"`
+	Category     string `json:"category"` // Add missing fields
+	TargetID     string `json:"target_id"`
+	AcksReceived int    `json:"acks_received"`
 }
 
 type GossipNode struct {
-	ID       uint64
-	Address  string
-	LastSeen time.Time
-	IsAlive  bool
+	ID        uint64
+	Address   string
+	PublicKey string // Add PublicKey field
+	LastSeen  time.Time
+	IsAlive   bool
 }
 
 // Yggdrasil peer types
@@ -107,7 +110,6 @@ var msgsToProcess []GossipMessage
 
 var isCensorshipAttackerNode bool
 var blockChainState bool
-
 
 func init() {
 	gob.Register(&consensus.Transaction{})
@@ -195,32 +197,39 @@ func (gn *GossipNetwork) VerifyMessageSignature(messageContent []byte, signature
 	return isValid
 }
 
-// authenticateMessage checks if the message sender is authorized for the room
-func (gn *GossipNetwork) authenticateMessage(msg GossipMessage) bool {
+// authenticateMessage authenticates a gossip message
+func (gn *GossipNetwork) authenticateMessage(msg GossipMessage, peer GossipNode) bool {
 	if gn.disableAuth {
 		return true
 	}
 
-	// Check if public key is in the room
-	peers := peerDetails.GetPeersInRoom(msg.RoomID)
-	for _, peer := range peers {
-		if msg.PublicKey == peer.PublicKey {
-			// Validate the digital signature
-			var msgDataString string = fmt.Sprintf("%v", msg.Data)
-			messageBytes := []byte(msgDataString)
-			if !gn.VerifyMessageSignature(messageBytes, msg.DigitalSignature, peer.PublicKey) {
-				log.Printf("Invalid signature for message from %s\nMessage: %v\nSignature: %s",
-					msg.PublicKey, msg.Data, msg.DigitalSignature)
-				return false
-			}
-
-			log.Printf("Message authenticated from %s", msg.PublicKey)
-			return true
-		}
+	// Check if peer is in the same room
+	if !gn.isInRoom(peer.PublicKey) {
+		fmt.Printf("Authentication failed: peer %s not in room %s\n", peer.PublicKey, gn.roomID)
+		return false
 	}
 
-	log.Printf("Public key %s not found in room %s allow list", msg.PublicKey, msg.RoomID)
-	return false
+	// Verify digital signature
+	messageBytes := []byte(fmt.Sprintf("%s%s%s%d%d", msg.ID, msg.Type, msg.Data, msg.Timestamp, msg.TTL))
+	if !gn.VerifyMessageSignature(messageBytes, msg.Signature, peer.PublicKey) {
+		fmt.Printf("Authentication failed: invalid signature from %s\n", peer.PublicKey)
+		return false
+	}
+
+	// Check if sender's public key matches peer's public key
+	if msg.PublicKey != peer.PublicKey {
+		fmt.Printf("Authentication failed: public key mismatch. Message: %s, Peer: %s\n", msg.PublicKey, peer.PublicKey)
+		return false
+	}
+
+	// Check if message is for the correct room
+	if msg.RoomID != gn.roomID {
+		fmt.Printf("Authentication failed: wrong room. Message room: %s, Current room: %s\n", msg.RoomID, gn.roomID)
+		return false
+	}
+
+	fmt.Printf("Authentication successful for message from %s\n", peer.PublicKey)
+	return true
 }
 
 // InitializeGossipNetwork sets up the complete gossip network
@@ -276,10 +285,9 @@ func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool, to
 		nodeIDs = append(nodeIDs, uint64(i))
 	}
 
-	if (blockChainState){
+	if blockChainState {
 		nodes = consensus.InitializeConsensus(len(nodeIDs), nodeIDs)
 	}
-	
 
 	// Start the integrated network
 	gossipNet.Start()
@@ -461,87 +469,78 @@ func (gn *GossipNetwork) selectRandomPeers(peers []*GossipNode, count int) []*Go
 	return selected
 }
 
-// // sendHeartbeat sends a heartbeat message to a peer
-// func (gn *GossipNetwork) sendHeartbeat(peer *GossipNode) {
-// 	// Create message data
-// 	messageData := "Hello from gossip protocol"
-// 	messageBytes := []byte(messageData)
+// sendHeartbeat sends a heartbeat message to all peers
+func (gn *GossipNetwork) sendHeartbeat() {
+	heartbeatMsg := GossipMessage{
+		ID:        generateMessageID(),
+		Type:      "heartbeat",
+		Data:      "ping",
+		Sender:    fmt.Sprintf("%d", gn.nodeID),
+		RoomID:    gn.roomID,
+		Timestamp: time.Now().Unix(),
+		TTL:       1,
+		PublicKey: hex.EncodeToString(gn.publicKey),
+	}
 
-// 	// Sign the message
-// 	signature := gn.SignMessage(messageBytes)
-// 	signatureHex := hex.EncodeToString(signature)
+	// Sign the message
+	messageBytes := []byte(fmt.Sprintf("%s%s%s%d%d", heartbeatMsg.ID, heartbeatMsg.Type, heartbeatMsg.Data, heartbeatMsg.Timestamp, heartbeatMsg.TTL))
+	signature := gn.SignMessage(messageBytes)
+	heartbeatMsg.Signature = hex.EncodeToString(signature)
 
-// 	// Get our public key as hex
-// 	publicKeyHex := hex.EncodeToString(gn.publicKey)
-
-// 	msg := GossipMessage{
-// 		PublicKey:        publicKeyHex,
-// 		Type:             "heartbeat",
-// 		Category:         "broadcast",
-// 		Data:             messageData,
-// 		OriginID:         gn.nodeID,
-// 		TargetID:         0,
-// 		RoomID:           gn.roomID, // Add the missing RoomID!
-// 		MessageID:        generateMessageID(),
-// 		TTL:              10,
-// 		Timestamp:        uint64(time.Now().Unix()),
-// 		DigitalSignature: signatureHex,
-// 	}
-
-// 	err := gn.SendGossipMessage(peer, msg)
-// 	if err != nil {
-// 		fmt.Printf("Failed to send heartbeat to peer %d: %v\n", peer.ID, err)
-// 	}
-// }
+	// Send to all peers
+	for _, peer := range gn.gossipPeers {
+		if peer.ID != gn.nodeID {
+			if err := gn.SendGossipMessage(peer, heartbeatMsg); err != nil {
+				fmt.Printf("Failed to send heartbeat to peer %d: %v\n", peer.ID, err)
+			}
+		}
+	}
+}
 
 // HandleGossipMessage handles incoming gossip messages
 func (gn *GossipNetwork) HandleGossipMessage(msg GossipMessage) {
 	// Check if we've seen this message
 	gn.gossipMutex.Lock()
-	if gn.messageHistory[msg.MessageID] {
+	if gn.messageHistory[msg.ID] {
 		gn.gossipMutex.Unlock()
 		return // Already seen
 	}
-	gn.messageHistory[msg.MessageID] = true
+	gn.messageHistory[msg.ID] = true
 	gn.gossipMutex.Unlock()
 
+	// Find the peer to authenticate against
+	var peer GossipNode
+	for _, p := range gn.gossipPeers {
+		if p.PublicKey == msg.PublicKey {
+			peer = *p
+			break
+		}
+	}
+
 	// Authenticate the message
-	if !gn.authenticateMessage(msg) {
-		log.Printf("Message authentication failed for message ID: %s", msg.MessageID)
+	if !gn.authenticateMessage(msg, peer) {
+		log.Printf("Message authentication failed for message ID: %s", msg.ID)
 		return
 	}
 
 	// Determine if we should process this message
 	shouldProcess := gn.shouldProcessMessage(msg)
 
-
 	if shouldProcess {
 		// Process the message for ourselves
 		gn.processGossipMessage(msg)
 	}
 
-	// Always forward if TTL > 0 (unless it was meant only for us)
-	if msg.TTL > 0 && msg.Category != "direct" {
+	// Always forward if TTL > 0
+	if msg.TTL > 0 {
 		msg.TTL--
 		gn.forwardGossipMessage(msg)
 	}
 }
 
 func (gn *GossipNetwork) shouldProcessMessage(msg GossipMessage) bool {
-	switch msg.Category {
-	case "broadcast":
-		return true // everyone processes broadcasts
-
-	case "direct":
-		return msg.TargetID == gn.nodeID // Only target processes direct messages
-
-	case "room_specific":
-		// Check if we're in the specified room
-		return gn.isInRoom(msg.RoomID)
-
-	default:
-		return false
-	}
+	// For now, process all messages in the room
+	return msg.RoomID == gn.roomID
 }
 
 func (gn *GossipNetwork) isInRoom(roomID string) bool {
@@ -550,26 +549,27 @@ func (gn *GossipNetwork) isInRoom(roomID string) bool {
 }
 
 func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
-	fmt.Printf("Processing gossip message from %d: %+v\n", msg.OriginID, msg.Data)
+	fmt.Printf("Processing gossip message from %s: %+v\n", msg.Sender, msg.Data)
 
 	// Handle different message types
 	switch msg.Type {
 	case "chat":
 		fmt.Printf("Processing chat message: %v\n", msg.Data)
-		fmt.Println(msg.OriginID)
+		fmt.Println(msg.Sender)
 
 		// Reachability check
 		if msg.Data == "I hope I don't get censored!" {
-			network.SendMessageToStatCollector("Message Reached To Peer " + string(gn.publicKey), msg.RoomID, 3001)
+			network.SendMessageToStatCollector("Message Reached To Peer "+hex.EncodeToString(gn.publicKey), msg.RoomID, 3001)
 		}
 
-
 		// sending acknowledgement message back to peers
-		gn.GossipMessage("ack", "broadcast", msg, msg.OriginID, msg.RoomID, "")
+		// Convert string sender to uint64 for GossipMessage method
+		senderID, _ := strconv.ParseUint(msg.Sender, 10, 64)
+		gn.GossipMessage("ack", "broadcast", msg, senderID, msg.RoomID, "")
 
-		if (blockChainState){
+		if blockChainState {
 			// Doesent store message content (apart from sender, type, digital signature and timestamp)
-			// tx := consensus.NewTransaction(msg.PublicKey, "chat", msg.DigitalSignature, msg.Timestamp, msg.RoomID)
+			// tx := consensus.NewTransaction(msg.PublicKey, "chat", msg.Signature, msg.Timestamp, msg.RoomID)
 
 			// var nodeIndex int
 
@@ -585,36 +585,64 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 
 			msg.AcksReceived = 0
 			msgsToProcess = append(msgsToProcess, msg)
-			
 
-			go func(){
-				msgDigitalSignature := msg.DigitalSignature // potential race condition
+			go func() {
+				msgDigitalSignature := msg.Signature // potential race condition
 				yggpeers, err := network.GetYggdrasilPeers("unique")
 
-				if (err != nil) {
-					fmt.Println(err)
+				if err != nil {
+					fmt.Println("Error getting yggdrasil peers:", err)
+					return
 				}
 
-				ackThreshold :=  uint64(len(yggpeers) / 3) * 2
+				ackThreshold := uint64(len(yggpeers) / 2) // 50% of peers must acknowledge
+				if ackThreshold < 3 {
+					ackThreshold = 3 // Minimum threshold of 3 acks
+				}
+
+				fmt.Printf("Waiting for %d acks for message %s\n", ackThreshold, msgDigitalSignature)
 
 				timeThreshold := 0
-
 				for timeThreshold <= 15 {
-					
-					if (msgsToProcess[FindMessageIndex(msgDigitalSignature)].AcksReceived >= ackThreshold){
+
+					if msgsToProcess[FindMessageIndex(msgDigitalSignature)].AcksReceived >= int(ackThreshold) {
 						// Save to blockchain
 						fmt.Println("Yay")
-					} else{
-						//fmt.Printf("Exiting... %d\nAcksReceived: %d\nMSG: %s", timeThreshold, msgsToProcess[FindMessageIndex(msgDigitalSignature)].AcksReceived, msgsToProcess[FindMessageIndex(msgDigitalSignature)].DigitalSignature)
-						time.Sleep(1 * time.Second)
-						timeThreshold++
-					}
-				}
-				
+						fmt.Printf("Message %s has received %d acks, threshold is %d\n", msgDigitalSignature, msgsToProcess[FindMessageIndex(msgDigitalSignature)].AcksReceived, ackThreshold)
 
+						// Save message to blockchain after receiving enough acks
+						blockData := fmt.Sprintf("CHAT_MSG{Sender: %s, Type: %s, Data: %s, Timestamp: %d, Signature: %s}",
+							msg.PublicKey, msg.Type, msg.Data, msg.Timestamp, msg.Signature)
+
+						if err := blockchain.AddBlock(blockData, msg.RoomID); err != nil {
+							fmt.Printf("Failed to save message to blockchain: %v\n", err)
+						} else {
+							fmt.Printf("Successfully saved message to blockchain in room %s\n", msg.RoomID)
+						}
+
+						// Remove message from processing queue
+						msgIndex := FindMessageIndex(msgDigitalSignature)
+						if msgIndex != -1 {
+							msgsToProcess = append(msgsToProcess[:msgIndex], msgsToProcess[msgIndex+1:]...)
+						}
+
+						return
+					}
+
+					time.Sleep(1 * time.Second)
+					timeThreshold++
+				}
+
+				// If we reach here, the message didn't get enough acks in time
+				fmt.Printf("Message %s did not receive enough acks within timeout period\n", msgDigitalSignature)
+
+				// Remove message from processing queue
+				msgIndex := FindMessageIndex(msgDigitalSignature)
+				if msgIndex != -1 {
+					msgsToProcess = append(msgsToProcess[:msgIndex], msgsToProcess[msgIndex+1:]...)
+				}
 			}()
 		}
-		
 
 	case "ack":
 		dataBytes, err := json.Marshal(msg.Data)
@@ -629,46 +657,53 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 			log.Println("Error unmarshaling into GossipMessage:", err)
 			return
 		}
-		
-		if (blockChainState){
-			// tx := consensus.NewTransaction(ackmsg.PublicKey, "chat", ackmsg.DigitalSignature, ackmsg.Timestamp, ackmsg.RoomID)
+
+		if blockChainState {
+			// tx := consensus.NewTransaction(ackmsg.PublicKey, "chat", ackmsg.Signature, ackmsg.Timestamp, ackmsg.RoomID)
 
 			// var nodeIndex int
 
 			// for i, node := range nodes {
-			// 	if node.ID == PublicKeyToNodeID(msg.PublicKey){
+			// 	if node.ID == PublicKeyToNodeID(ackmsg.PublicKey){
 			// 		nodeIndex = i
 			// 	}
 			// }
 
 			// nodes[nodeIndex].HB.AddTransaction(tx)
+
 			// fmt.Println("Added Message as Transaction")
 
 			fmt.Println(msgsToProcess)
-			fmt.Println("Incrementing") // no 
-			fmt.Println(ackmsg.DigitalSignature)
+			fmt.Println("Incrementing") // no
+			fmt.Println(ackmsg.Signature)
 
-			if (FindMessageIndex(ackmsg.DigitalSignature) != -1){
-				msgsToProcess[FindMessageIndex(ackmsg.DigitalSignature)].AcksReceived += 1
-				fmt.Printf("Incremented to %d", msgsToProcess[FindMessageIndex(ackmsg.DigitalSignature)].AcksReceived )
+			if FindMessageIndex(ackmsg.Signature) != -1 {
+				msgsToProcess[FindMessageIndex(ackmsg.Signature)].AcksReceived += 1
+				fmt.Printf("Incremented to %d", msgsToProcess[FindMessageIndex(ackmsg.Signature)].AcksReceived)
 			}
-			
 
-			
+			// Save acknowledgment to blockchain
+			ackBlockData := fmt.Sprintf("ACK_MSG{Sender: %s, Type: %s, Target: %s, Timestamp: %d, Signature: %s}",
+				ackmsg.PublicKey, ackmsg.Type, ackmsg.TargetID, ackmsg.Timestamp, ackmsg.Signature)
+
+			if err := blockchain.AddBlock(ackBlockData, ackmsg.RoomID); err != nil {
+				fmt.Printf("Failed to save ack message to blockchain: %v\n", err)
+			} else {
+				fmt.Printf("Successfully saved ack message to blockchain in room %s\n", ackmsg.RoomID)
+			}
 		}
-		
+
 		fmt.Println("Received ack from: ")
-		fmt.Println(msg.OriginID)
+		fmt.Println(msg.Sender)
 
-		 
-	// case "heartbeat":
-	// 	// Update peer last seen time
-	// 	gn.updatePeerLastSeen(msg.OriginID)
+		// case "heartbeat":
+		// 	// Update peer last seen time
+		// 	gn.updatePeerLastSeen(msg.OriginID)
 
-	// case "consensus_message":
-	// 	// Handle consensus-related gossip
-	// 	gn.handleConsensusGossip(msg)
-	// }
+		// case "consensus_message":
+		// 	// Handle consensus-related gossip
+		// 	gn.handleConsensusGossip(msg)
+		// }
 	}
 }
 
@@ -743,7 +778,7 @@ func (gn *GossipNetwork) forwardGossipMessage(msg GossipMessage) {
 		gn.gossipMutex.RLock()
 		peers := make([]*GossipNode, 0, len(gn.gossipPeers))
 		for _, peer := range gn.gossipPeers {
-			if peer.IsAlive && peer.ID != msg.OriginID {
+			if peer.IsAlive && peer.ID != gn.nodeID { // Fix: compare with nodeID instead of msg.Sender
 				peers = append(peers, peer)
 			}
 		}
@@ -763,45 +798,25 @@ func (gn *GossipNetwork) forwardGossipMessage(msg GossipMessage) {
 
 // GossipMessage sends a custom message to the network
 func (gn *GossipNetwork) GossipMessage(msgType, category string, data interface{}, targetID uint64, roomID string, publicKeyStr string) {
-	// get timestamp 
-	timestamp := time.Now().Format(time.RFC3339)
-	
-	// Create message data
-	messageData := fmt.Sprintf("%v", data)
-	messageBytes := []byte(messageData) 
+	// Get our public key as hex
+	publicKeyHex := hex.EncodeToString(gn.publicKey)
 
 	// Sign the message
+	messageBytes := []byte(fmt.Sprintf("%v", data))
 	signature := gn.SignMessage(messageBytes)
 	signatureHex := hex.EncodeToString(signature)
 
-	publicKeyHex := ""
-	if (publicKeyStr == ""){
-		// Get our public key as hex
-		publicKeyHex = hex.EncodeToString(gn.publicKey)
-	} else {
-		publicKeyHex = publicKeyStr
-	}
-
-
-	// // Parse the timestamp into a time.Time object
-	// parsedTime, err := time.Parse(time.RFC3339, timestamp)
-	// if err != nil {
-	// 	fmt.Println("Error parsing timestamp:", err)
-	// 	return
-	// }
-
 	gossipMsg := GossipMessage{
-		PublicKey:        publicKeyHex,
-		Type:             msgType,
-		Category:         category,
-		Data:             data,
-		OriginID:         gn.nodeID,
-		TargetID:         targetID,
-		RoomID:           roomID,
-		MessageID:        generateMessageID(),
-		TTL:              10,
-		Timestamp:        timestamp,
-		DigitalSignature: signatureHex,
+		ID:        generateMessageID(),
+		PublicKey: publicKeyHex,
+		Type:      msgType,
+		Category:  category,
+		Data:      fmt.Sprintf("%v", data), // Convert interface{} to string
+		Sender:    fmt.Sprintf("%d", gn.nodeID),
+		TargetID:  fmt.Sprintf("%d", targetID), // Convert uint64 to string
+		RoomID:    roomID,
+		Timestamp: time.Now().Unix(), // Use Unix timestamp instead of string
+		Signature: signatureHex,
 	}
 
 	// Add to our own processing first
@@ -850,7 +865,6 @@ func (gn *GossipNetwork) GetYggdrasilPeers(mode string) ([]Peer, error) {
 		}
 		return uniquePeers, nil
 	}
-	
 
 	return nil, nil
 }
@@ -936,11 +950,10 @@ func PublicKeyToNodeID(hexStr string) uint64 {
 	return uint64(0)
 }
 
-
 // Function to find the index of a message by DigitalSignature
 func FindMessageIndex(lookupSignature string) int {
 	for i, msg := range msgsToProcess {
-		if msg.DigitalSignature == lookupSignature {
+		if msg.Signature == lookupSignature {
 			return i
 		}
 	}

@@ -26,14 +26,13 @@ func RunConsensusTestControlVM1() {
 	peerDetails.AddPeer(publicKey_VM1, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey_VM1), false, roomID)
 	peerDetails.AddPeer(publicKey2_VM2, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey2_VM2), false, roomID)
 	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), false, roomID)
-	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey4_VM4), false, roomID)
+	peerDetails.AddPeer(publicKey4_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey4_VM4), false, roomID)
 
 	gossipNet, err := gossipnetwork.InitializeGossipNetwork(roomID, 3000, false, true)
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	// gossipNet.DisableAuthentication()
 
 	time.Sleep(time.Second * 5)
 	gossipNet.GossipMessage("chat", "broadcast", "I hope i don't get censored24242!", 1, roomID, "")
