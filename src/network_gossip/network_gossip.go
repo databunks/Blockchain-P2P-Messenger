@@ -102,6 +102,7 @@ type GossipNetwork struct {
 	// Message processing
 	msgsToProcess []GossipMessage
 	processedAcks map[string]map[string]bool // messageID -> peerPublicKey -> bool
+	pendingAcks   map[string][]GossipMessage // messageID -> []ack messages
 }
 
 var nodes []*consensus.Server
@@ -138,6 +139,7 @@ func NewGossipNetwork(nodeID uint64, roomID string, port uint64) *GossipNetwork 
 		disableAuth:    false, // Set to true to disable authentication
 		msgsToProcess:  make([]GossipMessage, 0),
 		processedAcks:  make(map[string]map[string]bool),
+		pendingAcks:    make(map[string][]GossipMessage),
 	}
 }
 
@@ -671,6 +673,25 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 			if !messageAlreadyProcessing {
 				// Initialize acks received counter
 				msg.AcksReceived = 0
+
+				// Check if we have pending acks for this message
+				if pendingAcks, exists := gn.pendingAcks[msg.ID]; exists {
+					fmt.Printf("Found %d pending acks for message %s, processing them now\n", len(pendingAcks), msg.ID)
+					for _, pendingAck := range pendingAcks {
+						// Process each pending ack
+						if gn.processedAcks[msg.ID] == nil {
+							gn.processedAcks[msg.ID] = make(map[string]bool)
+						}
+						if !gn.processedAcks[msg.ID][pendingAck.PublicKey] {
+							gn.processedAcks[msg.ID][pendingAck.PublicKey] = true
+							msg.AcksReceived++
+							fmt.Printf("Applied pending ack from %s, total acks: %d\n", pendingAck.PublicKey, msg.AcksReceived)
+						}
+					}
+					// Clear pending acks for this message
+					delete(gn.pendingAcks, msg.ID)
+				}
+
 				gn.msgsToProcess = append(gn.msgsToProcess, msg)
 
 				// Start goroutine to wait for acks
@@ -766,7 +787,12 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 					}
 
 					if !found {
-						fmt.Printf("WARNING: Message %s not found in msgsToProcess list!\n", messageID)
+						fmt.Printf("WARNING: Message %s not found in msgsToProcess list! Storing ack for later processing.\n", messageID)
+						// Store this ack for later processing when the message arrives
+						if gn.pendingAcks[messageID] == nil {
+							gn.pendingAcks[messageID] = make([]GossipMessage, 0)
+						}
+						gn.pendingAcks[messageID] = append(gn.pendingAcks[messageID], msg)
 					}
 				}
 
