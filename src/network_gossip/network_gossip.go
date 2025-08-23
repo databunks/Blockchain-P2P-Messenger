@@ -658,64 +658,61 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 		gn.GossipMessage("ack", "broadcast", ackData, senderID, msg.RoomID, "")
 
 		if blockChainState {
-			// Doesent store message content (apart from sender, type, digital signature and timestamp)
-			// tx := consensus.NewTransaction(msg.PublicKey, "chat", msg.Signature, msg.Timestamp, msg.RoomID)
+			// Check if we already have this message in processing
+			messageAlreadyProcessing := false
+			for _, processingMsg := range gn.msgsToProcess {
+				if processingMsg.ID == msg.ID {
+					messageAlreadyProcessing = true
+					break
+				}
+			}
 
-			// var nodeIndex int
+			// Only add to processing if we don't already have it
+			if !messageAlreadyProcessing {
+				// Initialize acks received counter
+				msg.AcksReceived = 0
+				gn.msgsToProcess = append(gn.msgsToProcess, msg)
 
-			// for i, node := range nodes {
-			// 	if node.ID == PublicKeyToNodeID(msg.PublicKey){
-			// 		nodeIndex = i
-			// 	}
-			// }
+				// Start goroutine to wait for acks
+				go func(messageID string) {
+					// Check every second instead of waiting full 15 seconds
+					for i := 0; i < 15; i++ {
+						time.Sleep(1 * time.Second)
 
-			// nodes[nodeIndex].HB.AddTransaction(tx)
+						// Find the message and check if it received enough acks
+						for j, processingMsg := range gn.msgsToProcess {
+							if processingMsg.ID == messageID {
+								if processingMsg.AcksReceived >= thresholdAcks {
+									// Save to blockchain
+									chatBlockData := fmt.Sprintf("CHAT_MSG{Sender: %s, Type: %s, Data: %s, Timestamp: %d, Signature: %s}",
+										processingMsg.PublicKey, processingMsg.Type, processingMsg.Data, processingMsg.Timestamp, processingMsg.Signature)
 
-			// fmt.Println("Added Message as Transaction")
+									if err := blockchain.AddBlock(chatBlockData, msg.RoomID); err != nil {
+										fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
+									} else {
+										fmt.Printf("Yay\n")
+									}
 
-			// Initialize acks received counter
-			msg.AcksReceived = 0
-			gn.msgsToProcess = append(gn.msgsToProcess, msg)
-
-			// Start goroutine to wait for acks
-			go func(messageID string) {
-				// Check every second instead of waiting full 15 seconds
-				for i := 0; i < 15; i++ {
-					time.Sleep(1 * time.Second)
-
-					// Find the message and check if it received enough acks
-					for j, processingMsg := range gn.msgsToProcess {
-						if processingMsg.ID == messageID {
-							if processingMsg.AcksReceived >= thresholdAcks {
-								// Save to blockchain
-								chatBlockData := fmt.Sprintf("CHAT_MSG{Sender: %s, Type: %s, Data: %s, Timestamp: %d, Signature: %s}",
-									processingMsg.PublicKey, processingMsg.Type, processingMsg.Data, processingMsg.Timestamp, processingMsg.Signature)
-
-								if err := blockchain.AddBlock(chatBlockData, msg.RoomID); err != nil {
-									fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
-								} else {
-									fmt.Printf("Yay\n")
+									// Remove from processing list
+									gn.msgsToProcess = append(gn.msgsToProcess[:j], gn.msgsToProcess[j+1:]...)
+									return // Exit early once threshold is reached
 								}
-
-								// Remove from processing list
-								gn.msgsToProcess = append(gn.msgsToProcess[:j], gn.msgsToProcess[j+1:]...)
-								return // Exit early once threshold is reached
+								break
 							}
+						}
+					}
+
+					// If we reach here, the message didn't get enough acks in time
+					for i, processingMsg := range gn.msgsToProcess {
+						if processingMsg.ID == messageID {
+							fmt.Printf("Message %s did not receive enough acks within timeout period. Received: %d, Required: %d\n", messageID, processingMsg.AcksReceived, thresholdAcks)
+							// Remove from processing list
+							gn.msgsToProcess = append(gn.msgsToProcess[:i], gn.msgsToProcess[i+1:]...)
 							break
 						}
 					}
-				}
-
-				// If we reach here, the message didn't get enough acks in time
-				for i, processingMsg := range gn.msgsToProcess {
-					if processingMsg.ID == messageID {
-						fmt.Printf("Message %s did not receive enough acks within timeout period. Received: %d, Required: %d\n", messageID, processingMsg.AcksReceived, thresholdAcks)
-						// Remove from processing list
-						gn.msgsToProcess = append(gn.msgsToProcess[:i], gn.msgsToProcess[i+1:]...)
-						break
-					}
-				}
-			}(msg.ID)
+				}(msg.ID)
+			}
 		}
 
 	case "ack":
