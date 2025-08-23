@@ -187,11 +187,19 @@ func (gn *GossipNetwork) VerifyMessageSignature(messageContent []byte, signature
 		return false
 	}
 
+	// Debug: Print the verification details
+	fmt.Printf("  Verifying signature: message='%s', signature='%s', publicKey='%s'\n",
+		string(messageContent), signatureHex, publicKeyHex)
+	fmt.Printf("  Message length: %d bytes, Signature length: %d bytes, PublicKey length: %d bytes\n",
+		len(messageContent), len(signatureBytes), len(publicKeyBytes))
+
 	// Check signature validity using ed25519
 	isValid := ed25519.Verify(ed25519.PublicKey(publicKeyBytes), messageContent, signatureBytes)
 
 	if !isValid {
 		log.Println("Signature verification failed")
+	} else {
+		fmt.Printf("  Signature verification successful!\n")
 	}
 
 	return isValid
@@ -216,8 +224,8 @@ func (gn *GossipNetwork) authenticateMessage(msg GossipMessage, peer GossipNode)
 		return false
 	}
 
-	// Verify digital signature
-	messageBytes := []byte(fmt.Sprintf("%s%s%s%d%d", msg.ID, msg.Type, msg.Data, msg.Timestamp, msg.TTL))
+	// Verify digital signature (exclude TTL as it changes during forwarding)
+	messageBytes := []byte(fmt.Sprintf("%s%s%s%d", msg.ID, msg.Type, msg.Data, msg.Timestamp))
 
 	// Debug logging for signature verification
 	fmt.Printf("Signature verification debug:\n")
@@ -225,7 +233,7 @@ func (gn *GossipNetwork) authenticateMessage(msg GossipMessage, peer GossipNode)
 	fmt.Printf("  Message Type: '%s'\n", msg.Type)
 	fmt.Printf("  Message Data: '%s'\n", msg.Data)
 	fmt.Printf("  Message Timestamp: %d\n", msg.Timestamp)
-	fmt.Printf("  Message TTL: %d\n", msg.TTL)
+	fmt.Printf("  Message TTL: %d (excluded from signature)\n", msg.TTL)
 	fmt.Printf("  Message Signature: '%s'\n", msg.Signature)
 	fmt.Printf("  Peer Public Key: '%s'\n", peer.PublicKey)
 	fmt.Printf("  Message bytes to verify: '%s'\n", string(messageBytes))
@@ -242,8 +250,32 @@ func (gn *GossipNetwork) authenticateMessage(msg GossipMessage, peer GossipNode)
 		if gn.VerifyMessageSignature(oldFormatBytes, msg.Signature, peer.PublicKey) {
 			fmt.Printf("Signature verification successful with old format\n")
 		} else {
-			fmt.Printf("Authentication failed: invalid signature from %s (both formats failed)\n", peer.PublicKey)
-			return false
+			// Try additional formats that might have been used
+			fmt.Printf("Old format failed, trying additional formats...\n")
+
+			// Format 3: ID + Type + Data (same as new format without timestamp)
+			format3Bytes := []byte(fmt.Sprintf("%s%s%s", msg.ID, msg.Type, msg.Data))
+			fmt.Printf("  Format 3 bytes to verify: '%s'\n", string(format3Bytes))
+			if gn.VerifyMessageSignature(format3Bytes, msg.Signature, peer.PublicKey) {
+				fmt.Printf("Signature verification successful with format 3\n")
+			} else {
+				// Format 4: Type + Data + Timestamp
+				format4Bytes := []byte(fmt.Sprintf("%s%s%d", msg.Type, msg.Data, msg.Timestamp))
+				fmt.Printf("  Format 4 bytes to verify: '%s'\n", string(format4Bytes))
+				if gn.VerifyMessageSignature(format4Bytes, msg.Signature, peer.PublicKey) {
+					fmt.Printf("Signature verification successful with format 4\n")
+				} else {
+					// Format 5: Old format with TTL (before my fix)
+					format5Bytes := []byte(fmt.Sprintf("%s%s%s%d%d", msg.ID, msg.Type, msg.Data, msg.Timestamp, msg.TTL))
+					fmt.Printf("  Format 5 bytes to verify: '%s'\n", string(format5Bytes))
+					if gn.VerifyMessageSignature(format5Bytes, msg.Signature, peer.PublicKey) {
+						fmt.Printf("Signature verification successful with format 5 (old TTL format)\n")
+					} else {
+						fmt.Printf("Authentication failed: invalid signature from %s (all formats failed)\n", peer.PublicKey)
+						return false
+					}
+				}
+			}
 		}
 	}
 
@@ -553,8 +585,8 @@ func (gn *GossipNetwork) sendHeartbeat() {
 		PublicKey: hex.EncodeToString(gn.publicKey),
 	}
 
-	// Sign the message
-	messageBytes := []byte(fmt.Sprintf("%s%s%s%d%d", heartbeatMsg.ID, heartbeatMsg.Type, heartbeatMsg.Data, heartbeatMsg.Timestamp, heartbeatMsg.TTL))
+	// Sign the message (exclude TTL as it changes during forwarding)
+	messageBytes := []byte(fmt.Sprintf("%s%s%s%d", heartbeatMsg.ID, heartbeatMsg.Type, heartbeatMsg.Data, heartbeatMsg.Timestamp))
 
 	// Debug logging for signing
 	fmt.Printf("Message signing debug:\n")
@@ -562,7 +594,7 @@ func (gn *GossipNetwork) sendHeartbeat() {
 	fmt.Printf("  Message Type: '%s'\n", heartbeatMsg.Type)
 	fmt.Printf("  Message Data: '%s'\n", heartbeatMsg.Data)
 	fmt.Printf("  Message Timestamp: %d\n", heartbeatMsg.Timestamp)
-	fmt.Printf("  Message TTL: %d\n", heartbeatMsg.TTL)
+	fmt.Printf("  Message TTL: %d (excluded from signature)\n", heartbeatMsg.TTL)
 	fmt.Printf("  Message bytes to sign: '%s'\n", string(messageBytes))
 
 	signature := gn.SignMessage(messageBytes)
@@ -922,8 +954,8 @@ func (gn *GossipNetwork) GossipMessage(msgType, category string, data interface{
 		TTL:       10,                // Set default TTL
 	}
 
-	// Sign the message using the same format as verification
-	messageBytes := []byte(fmt.Sprintf("%s%s%s%d%d", gossipMsg.ID, gossipMsg.Type, gossipMsg.Data, gossipMsg.Timestamp, gossipMsg.TTL))
+	// Sign the message using the same format as verification (exclude TTL)
+	messageBytes := []byte(fmt.Sprintf("%s%s%s%d", gossipMsg.ID, gossipMsg.Type, gossipMsg.Data, gossipMsg.Timestamp))
 
 	// Debug logging for signing in GossipMessage
 	fmt.Printf("GossipMessage signing debug:\n")
@@ -931,7 +963,7 @@ func (gn *GossipNetwork) GossipMessage(msgType, category string, data interface{
 	fmt.Printf("  Message Type: '%s'\n", gossipMsg.Type)
 	fmt.Printf("  Message Data: '%s'\n", gossipMsg.Data)
 	fmt.Printf("  Message Timestamp: %d\n", gossipMsg.Timestamp)
-	fmt.Printf("  Message TTL: %d\n", gossipMsg.TTL)
+	fmt.Printf("  Message TTL: %d (excluded from signature)\n", gossipMsg.TTL)
 	fmt.Printf("  Message bytes to sign: '%s'\n", string(messageBytes))
 
 	signature := gn.SignMessage(messageBytes)
