@@ -430,7 +430,6 @@ func (gn *GossipNetwork) handleConnection(conn net.Conn) {
 	if err := json.Unmarshal(buffer[:n], &gossipMsg); err == nil && gossipMsg.Type != "" {
 		// This is a gossip message
 		fmt.Printf("Received gossip message: %+v\n", gossipMsg)
-		fmt.Printf("NODE %d: Message %s (type: %s) received with TTL: %d\n", gn.nodeID, gossipMsg.ID, gossipMsg.Type, gossipMsg.TTL)
 
 		// Handle the message (authentication happens inside HandleGossipMessage)
 		gn.HandleGossipMessage(gossipMsg)
@@ -569,7 +568,6 @@ func (gn *GossipNetwork) HandleGossipMessage(msg GossipMessage) {
 	// Check if we've seen this message
 	gn.gossipMutex.Lock()
 	if gn.messageHistory[msg.ID] {
-		fmt.Printf("NODE %d: Dropping duplicate message %s (type: %s)\n", gn.nodeID, msg.ID, msg.Type)
 		gn.gossipMutex.Unlock()
 		return // Already seen
 	}
@@ -620,11 +618,8 @@ func (gn *GossipNetwork) HandleGossipMessage(msg GossipMessage) {
 
 	// Always forward if TTL > 0
 	if msg.TTL > 0 {
-		fmt.Printf("NODE %d: Forwarding message %s (type: %s) with TTL: %d -> %d\n", gn.nodeID, msg.ID, msg.Type, msg.TTL, msg.TTL-1)
 		msg.TTL--
 		gn.forwardGossipMessage(msg)
-	} else {
-		fmt.Printf("NODE %d: Message %s (type: %s) TTL expired, not forwarding\n", gn.nodeID, msg.ID, msg.Type)
 	}
 }
 
@@ -645,14 +640,10 @@ func (gn *GossipNetwork) isInRoom(publicKey string) bool {
 }
 
 func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
-	fmt.Printf("Processing gossip message from %s: %+v\n", msg.Sender, msg.Data)
 
 	// Handle different message types
 	switch msg.Type {
 	case "chat":
-		fmt.Printf("NODE %d: Processing chat message: %s\n", gn.nodeID, msg.Data)
-		fmt.Printf("Processing chat message: %v\n", msg.Data)
-		fmt.Println(msg.Sender)
 
 		// Reachability check
 		if msg.Data == "I hope I don't get censored!" {
@@ -664,7 +655,6 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 		ackData := fmt.Sprintf("ACK for message %s from %s", msg.ID, msg.PublicKey)
 		gn.GossipMessage("ack", "broadcast", ackData, senderID, msg.RoomID, "")
 
-		fmt.Printf("NODE %d: blockChainState check: %v\n", gn.nodeID, gn.blockChainState)
 		if gn.blockChainState {
 			gn.gossipMutex.Lock()
 			// Initialize acks received counter
@@ -680,22 +670,16 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 			}
 
 			if alreadyProcessing {
-				fmt.Printf("NODE %d: SKIPPING - Message %s already being processed\n", gn.nodeID, msg.ID)
 				gn.gossipMutex.Unlock()
 				return // Skip if already processing
 			}
 
 			// Check if we have pending acks for this message
 			if pendingAcks, exists := gn.pendingAcks[msg.ID]; exists {
-				fmt.Printf("NODE %d: Found %d pending acks for message %s\n", gn.nodeID, len(pendingAcks), msg.ID)
-				fmt.Printf("NODE %d: Initial AcksReceived: %d\n", gn.nodeID, msg.AcksReceived)
-
 				// CRITICAL FIX: Clear processedAcks for this message so pending acks can be processed fresh
 				delete(gn.processedAcks, msg.ID)
-				fmt.Printf("NODE %d: Cleared processedAcks for message %s to allow pending ack processing\n", gn.nodeID, msg.ID)
 
 				for _, pendingAck := range pendingAcks {
-					fmt.Printf("NODE %d: Processing pending ack from %s\n", gn.nodeID, pendingAck.PublicKey)
 					// Process each pending ack
 					if gn.processedAcks[msg.ID] == nil {
 						gn.processedAcks[msg.ID] = make(map[string]bool)
@@ -703,26 +687,20 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 					if !gn.processedAcks[msg.ID][pendingAck.PublicKey] {
 						gn.processedAcks[msg.ID][pendingAck.PublicKey] = true
 						msg.AcksReceived++
-						fmt.Printf("NODE %d: Processed pending ack from %s, total acks: %d\n", gn.nodeID, pendingAck.PublicKey, msg.AcksReceived)
-					} else {
-						fmt.Printf("NODE %d: Skipping already processed ack from %s\n", gn.nodeID, pendingAck.PublicKey)
 					}
 				}
-				fmt.Printf("NODE %d: Final AcksReceived after processing pending acks: %d\n", gn.nodeID, msg.AcksReceived)
 				// Clear pending acks for this message
 				delete(gn.pendingAcks, msg.ID)
 			}
 
 			// Add message to processing list
 			gn.msgsToProcess = append(gn.msgsToProcess, &msg)
-			fmt.Printf("NODE %d: SUCCESS - Added message %s to msgsToProcess, total count: %d\n", gn.nodeID, msg.ID, len(gn.msgsToProcess))
 
 			// IMPORTANT: Update the message in msgsToProcess with the correct AcksReceived count
 			// Find the message we just added and update its AcksReceived
 			for i, processingMsg := range gn.msgsToProcess {
 				if processingMsg.ID == msg.ID {
 					gn.msgsToProcess[i].AcksReceived = msg.AcksReceived
-					fmt.Printf("NODE %d: Updated message %s in msgsToProcess with %d acks\n", gn.nodeID, msg.ID, msg.AcksReceived)
 					break
 				}
 			}
@@ -746,7 +724,6 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 						// Find the message and check if it received enough acks
 						for i, processingMsg := range gn.msgsToProcess {
 							if processingMsg.ID == messageID {
-								fmt.Printf("NODE %d: Checking message %s - Acks: %d/%d\n", gn.nodeID, messageID, processingMsg.AcksReceived, gn.thresholdAcks)
 								if processingMsg.AcksReceived >= gn.thresholdAcks {
 									// Save to blockchain
 									chatBlockData := fmt.Sprintf("CHAT_MSG{Sender: %s, Type: %s, Data: %s, Timestamp: %d, Signature: %s}",
@@ -754,8 +731,6 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 
 									if err := blockchain.AddBlock(chatBlockData, gn.roomID); err != nil {
 										fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
-									} else {
-										fmt.Printf("Message %s saved to blockchain with %d acks\n", messageID, processingMsg.AcksReceived)
 									}
 
 									// Remove from processing list
@@ -773,7 +748,6 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 						gn.gossipMutex.Lock()
 						for i, processingMsg := range gn.msgsToProcess {
 							if processingMsg.ID == messageID {
-								fmt.Printf("TIMEOUT - Message %s did not receive enough acks within timeout period. Received: %d, Required: %d\n", messageID, processingMsg.AcksReceived, gn.thresholdAcks)
 								gn.msgsToProcess = append(gn.msgsToProcess[:i], gn.msgsToProcess[i+1:]...)
 								break
 							}
@@ -783,8 +757,6 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 					}
 				}
 			}(msg.ID)
-		} else {
-			fmt.Printf("NODE %d: SKIPPING blockchain processing - blockChainState is false\n", gn.nodeID)
 		}
 
 	case "ack":
@@ -795,8 +767,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 			messageID = parts[3] // "ACK for message <id> from <publicKey>"
 		}
 
-		fmt.Printf("Processing ack for message ID: %s\n", messageID)
-		fmt.Printf("Current msgsToProcess count: %d\n", len(gn.msgsToProcess))
+		// Processing ack for message
 
 		if gn.blockChainState {
 			gn.gossipMutex.Lock()
@@ -813,10 +784,8 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 				if messageID != "" {
 					found := false
 					for i, processingMsg := range gn.msgsToProcess {
-						fmt.Printf("Checking message %s against %s\n", processingMsg.ID, messageID)
 						if processingMsg.ID == messageID {
 							gn.msgsToProcess[i].AcksReceived++
-							fmt.Printf("Message %s has received %d acks, threshold is %d\n", messageID, gn.msgsToProcess[i].AcksReceived, gn.thresholdAcks)
 
 							// Check if threshold is reached and save immediately
 							if gn.msgsToProcess[i].AcksReceived >= gn.thresholdAcks {
@@ -826,8 +795,6 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 
 								if err := blockchain.AddBlock(chatBlockData, msg.RoomID); err != nil {
 									fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
-								} else {
-									fmt.Printf("Message %s saved to blockchain with %d acks\n", messageID, processingMsg.AcksReceived)
 								}
 
 								// Remove from processing list
@@ -839,29 +806,20 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 					}
 
 					if !found {
-						fmt.Printf("WARNING: Message %s not found in msgsToProcess list! Storing ack for later processing.\n", messageID)
 						// Store this ack for later processing when the message arrives
 						if gn.pendingAcks[messageID] == nil {
 							gn.pendingAcks[messageID] = make([]GossipMessage, 0)
 						}
 						gn.pendingAcks[messageID] = append(gn.pendingAcks[messageID], msg)
-						fmt.Printf("NODE %d: Stored ack from %s in pendingAcks for message %s, total pending: %d\n", gn.nodeID, msg.PublicKey, messageID, len(gn.pendingAcks[messageID]))
 					}
 				}
 
-				// Only save acknowledgment to blockchain if it's the first time from this peer
-				ackBlockData := fmt.Sprintf("ACK_MSG{Sender: %s, Type: %s, Data: %s, Timestamp: %d, Signature: %s}",
-					msg.PublicKey, msg.Type, msg.Data, msg.Timestamp, msg.Signature)
-
-				if err := blockchain.AddBlock(ackBlockData, msg.RoomID); err != nil {
-					fmt.Printf("Failed to save ack message to blockchain: %v\n", err)
-				}
+				// Note: Acks are not saved to blockchain, only chat messages are saved
 			}
 			gn.gossipMutex.Unlock()
 		}
 
-		fmt.Println("Received ack from: ")
-		fmt.Println(msg.Sender)
+		// Received ack from peer
 
 		// case "heartbeat":
 		// 	// Update peer last seen time
@@ -955,9 +913,6 @@ func (gn *GossipNetwork) forwardGossipMessage(msg GossipMessage) {
 		for _, peer := range gn.gossipPeers {
 			if peer.IsAlive && peer.ID != gn.nodeID { // Fix: compare with nodeID instead of msg.Sender
 				peers = append(peers, peer)
-				fmt.Printf("NODE %d: Adding peer %d (IsAlive: %v)\n", gn.nodeID, peer.ID, peer.IsAlive)
-			} else {
-				fmt.Printf("NODE %d: Skipping peer %d (IsAlive: %v, isSelf: %v)\n", gn.nodeID, peer.ID, peer.IsAlive, peer.ID == gn.nodeID)
 			}
 		}
 		gn.gossipMutex.RUnlock()
@@ -965,17 +920,8 @@ func (gn *GossipNetwork) forwardGossipMessage(msg GossipMessage) {
 		// Forward to ALL peers (not just random subset)
 		selected := peers
 
-		fmt.Printf("NODE %d: Forwarding message %s to %d peers: %v\n", gn.nodeID, msg.ID, len(selected), func() []uint64 {
-			ids := make([]uint64, len(selected))
-			for i, p := range selected {
-				ids[i] = p.ID
-			}
-			return ids
-		}())
-
 		// Ensure we forward to ALL peers to guarantee message propagation
 		for _, peer := range selected {
-			fmt.Printf("Forwarding gossip message to peer %d\n", peer.ID)
 			gn.SendGossipMessage(peer, msg)
 		}
 	}
