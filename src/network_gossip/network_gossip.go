@@ -218,6 +218,18 @@ func (gn *GossipNetwork) authenticateMessage(msg GossipMessage, peer GossipNode)
 
 	// Verify digital signature
 	messageBytes := []byte(fmt.Sprintf("%s%s%s%d%d", msg.ID, msg.Type, msg.Data, msg.Timestamp, msg.TTL))
+
+	// Debug logging for signature verification
+	fmt.Printf("Signature verification debug:\n")
+	fmt.Printf("  Message ID: '%s'\n", msg.ID)
+	fmt.Printf("  Message Type: '%s'\n", msg.Type)
+	fmt.Printf("  Message Data: '%s'\n", msg.Data)
+	fmt.Printf("  Message Timestamp: %d\n", msg.Timestamp)
+	fmt.Printf("  Message TTL: %d\n", msg.TTL)
+	fmt.Printf("  Message Signature: '%s'\n", msg.Signature)
+	fmt.Printf("  Peer Public Key: '%s'\n", peer.PublicKey)
+	fmt.Printf("  Message bytes to verify: '%s'\n", string(messageBytes))
+
 	if !gn.VerifyMessageSignature(messageBytes, msg.Signature, peer.PublicKey) {
 		fmt.Printf("Authentication failed: invalid signature from %s\n", peer.PublicKey)
 		return false
@@ -531,6 +543,16 @@ func (gn *GossipNetwork) sendHeartbeat() {
 
 	// Sign the message
 	messageBytes := []byte(fmt.Sprintf("%s%s%s%d%d", heartbeatMsg.ID, heartbeatMsg.Type, heartbeatMsg.Data, heartbeatMsg.Timestamp, heartbeatMsg.TTL))
+
+	// Debug logging for signing
+	fmt.Printf("Message signing debug:\n")
+	fmt.Printf("  Message ID: '%s'\n", heartbeatMsg.ID)
+	fmt.Printf("  Message Type: '%s'\n", heartbeatMsg.Type)
+	fmt.Printf("  Message Data: '%s'\n", heartbeatMsg.Data)
+	fmt.Printf("  Message Timestamp: %d\n", heartbeatMsg.Timestamp)
+	fmt.Printf("  Message TTL: %d\n", heartbeatMsg.TTL)
+	fmt.Printf("  Message bytes to sign: '%s'\n", string(messageBytes))
+
 	signature := gn.SignMessage(messageBytes)
 	heartbeatMsg.Signature = hex.EncodeToString(signature)
 
@@ -554,6 +576,12 @@ func (gn *GossipNetwork) HandleGossipMessage(msg GossipMessage) {
 	}
 	gn.messageHistory[msg.ID] = true
 	gn.gossipMutex.Unlock()
+
+	// Skip processing our own heartbeat messages to avoid authentication loops
+	if msg.Type == "heartbeat" && msg.PublicKey == hex.EncodeToString(gn.publicKey) {
+		fmt.Printf("Skipping own heartbeat message: %s\n", msg.ID)
+		return
+	}
 
 	// Find the peer to authenticate against
 	var peer GossipNode
