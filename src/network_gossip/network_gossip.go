@@ -921,9 +921,20 @@ func (gn *GossipNetwork) forwardGossipMessage(msg GossipMessage) {
 	if !gn.isAttackerNode {
 		gn.gossipMutex.RLock()
 		peers := make([]*GossipNode, 0, len(gn.gossipPeers))
+		fmt.Printf("NODE %d: Available peers in gossipPeers: %v\n", gn.nodeID, func() []uint64 {
+			ids := make([]uint64, 0, len(gn.gossipPeers))
+			for _, p := range gn.gossipPeers {
+				ids = append(ids, p.ID)
+			}
+			return ids
+		}())
+
 		for _, peer := range gn.gossipPeers {
 			if peer.IsAlive && peer.ID != gn.nodeID { // Fix: compare with nodeID instead of msg.Sender
 				peers = append(peers, peer)
+				fmt.Printf("NODE %d: Adding peer %d (IsAlive: %v)\n", gn.nodeID, peer.ID, peer.IsAlive)
+			} else {
+				fmt.Printf("NODE %d: Skipping peer %d (IsAlive: %v, isSelf: %v)\n", gn.nodeID, peer.ID, peer.IsAlive, peer.ID == gn.nodeID)
 			}
 		}
 		gn.gossipMutex.RUnlock()
@@ -939,6 +950,7 @@ func (gn *GossipNetwork) forwardGossipMessage(msg GossipMessage) {
 			return ids
 		}())
 
+		// Ensure we forward to ALL peers to guarantee message propagation
 		for _, peer := range selected {
 			fmt.Printf("Forwarding gossip message to peer %d\n", peer.ID)
 			gn.SendGossipMessage(peer, msg)
