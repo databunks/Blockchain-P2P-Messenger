@@ -804,21 +804,31 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 		fmt.Printf("Received acknowledgment: %s\n", ackData)
 
 		// Extract message ID from ack data (format: "ACK for message <id> from <publicKey>")
-		// For now, we'll use the message ID directly since we're not storing complex data
-		// This is a simplified approach - in a production system you might want more robust parsing
+		// Parse the acknowledgment to get the actual message ID
+		var messageID string
+		if strings.Contains(ackData, "ACK for message ") {
+			parts := strings.Split(ackData, " ")
+			if len(parts) >= 4 {
+				messageID = parts[3] // "ACK for message <id> from <publicKey>"
+				fmt.Printf("Extracted message ID from ack: %s\n", messageID)
+			}
+		}
 
 		if blockChainState {
 			fmt.Println(msgsToProcess)
 			fmt.Println("Processing acknowledgment")
 
-			// Find the message by looking for one that matches the sender
-			// This is a simplified approach - ideally we'd extract the exact message ID
-			for i, processingMsg := range msgsToProcess {
-				if processingMsg.PublicKey == msg.PublicKey {
-					msgsToProcess[i].AcksReceived += 1
-					fmt.Printf("Incremented acks for message %s to %d\n", processingMsg.ID, msgsToProcess[i].AcksReceived)
-					break
+			// Find the message by the extracted message ID
+			if messageID != "" {
+				for i, processingMsg := range msgsToProcess {
+					if processingMsg.ID == messageID {
+						msgsToProcess[i].AcksReceived += 1
+						fmt.Printf("Incremented acks for message %s to %d\n", processingMsg.ID, msgsToProcess[i].AcksReceived)
+						break
+					}
 				}
+			} else {
+				fmt.Printf("Could not extract message ID from ack data: %s\n", ackData)
 			}
 
 			// Save acknowledgment to blockchain
