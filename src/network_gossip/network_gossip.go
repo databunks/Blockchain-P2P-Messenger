@@ -692,9 +692,12 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 					}
 					// Clear pending acks for this message
 					delete(gn.pendingAcks, msg.ID)
+				} else {
+					fmt.Printf("No pending acks found for message %s\n", msg.ID)
 				}
 
 				gn.msgsToProcess = append(gn.msgsToProcess, msg)
+				fmt.Printf("Added message %s to msgsToProcess, total count: %d\n", msg.ID, len(gn.msgsToProcess))
 
 				// Start goroutine to wait for acks
 				go func(messageID string) {
