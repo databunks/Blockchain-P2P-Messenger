@@ -430,6 +430,7 @@ func (gn *GossipNetwork) handleConnection(conn net.Conn) {
 	if err := json.Unmarshal(buffer[:n], &gossipMsg); err == nil && gossipMsg.Type != "" {
 		// This is a gossip message
 		fmt.Printf("Received gossip message: %+v\n", gossipMsg)
+		fmt.Printf("NODE %d: Message %s (type: %s) received with TTL: %d\n", gn.nodeID, gossipMsg.ID, gossipMsg.Type, gossipMsg.TTL)
 
 		// Handle the message (authentication happens inside HandleGossipMessage)
 		gn.HandleGossipMessage(gossipMsg)
@@ -568,6 +569,7 @@ func (gn *GossipNetwork) HandleGossipMessage(msg GossipMessage) {
 	// Check if we've seen this message
 	gn.gossipMutex.Lock()
 	if gn.messageHistory[msg.ID] {
+		fmt.Printf("NODE %d: Dropping duplicate message %s (type: %s)\n", gn.nodeID, msg.ID, msg.Type)
 		gn.gossipMutex.Unlock()
 		return // Already seen
 	}
@@ -618,8 +620,11 @@ func (gn *GossipNetwork) HandleGossipMessage(msg GossipMessage) {
 
 	// Always forward if TTL > 0
 	if msg.TTL > 0 {
+		fmt.Printf("NODE %d: Forwarding message %s (type: %s) with TTL: %d -> %d\n", gn.nodeID, msg.ID, msg.Type, msg.TTL, msg.TTL-1)
 		msg.TTL--
 		gn.forwardGossipMessage(msg)
+	} else {
+		fmt.Printf("NODE %d: Message %s (type: %s) TTL expired, not forwarding\n", gn.nodeID, msg.ID, msg.Type)
 	}
 }
 
@@ -923,9 +928,16 @@ func (gn *GossipNetwork) forwardGossipMessage(msg GossipMessage) {
 		}
 		gn.gossipMutex.RUnlock()
 
-		// Forward to random subset
-		numToForward := min(2, len(peers))
-		selected := gn.selectRandomPeers(peers, numToForward)
+		// Forward to ALL peers (not just random subset)
+		selected := peers
+
+		fmt.Printf("NODE %d: Forwarding message %s to %d peers: %v\n", gn.nodeID, msg.ID, len(selected), func() []uint64 {
+			ids := make([]uint64, len(selected))
+			for i, p := range selected {
+				ids[i] = p.ID
+			}
+			return ids
+		}())
 
 		for _, peer := range selected {
 			fmt.Printf("Forwarding gossip message to peer %d\n", peer.ID)
