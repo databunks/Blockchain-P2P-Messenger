@@ -703,7 +703,10 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 
 			// Start goroutine to wait for acks with timeout
 			go func(messageID string) {
-				timer := time.NewTimer(15 * time.Second)
+				// Wait a bit for pending acks to be processed first
+				time.Sleep(2 * time.Second)
+
+				timer := time.NewTimer(30 * time.Second) // Increased from 15 to 30 seconds
 				defer timer.Stop()
 
 				ticker := time.NewTicker(1 * time.Second)
@@ -716,6 +719,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 						// Find the message and check if it received enough acks
 						for i, processingMsg := range gn.msgsToProcess {
 							if processingMsg.ID == messageID {
+								fmt.Printf("NODE %d: Checking message %s - Acks: %d/%d\n", gn.nodeID, messageID, processingMsg.AcksReceived, gn.thresholdAcks)
 								if processingMsg.AcksReceived >= gn.thresholdAcks {
 									// Save to blockchain
 									chatBlockData := fmt.Sprintf("CHAT_MSG{Sender: %s, Type: %s, Data: %s, Timestamp: %d, Signature: %s}",
