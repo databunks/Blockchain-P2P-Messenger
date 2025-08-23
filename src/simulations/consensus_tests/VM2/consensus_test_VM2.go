@@ -31,7 +31,7 @@ func RunConsensusTestControlVM2(){
 
 	
 
-	gossipnetwork.InitializeGossipNetwork(roomID, 3000, false, false)
+	gossipnetwork.InitializeGossipNetwork(roomID, 3000, false, true)
 
 
 	// time.Sleep(time.Second * 5)

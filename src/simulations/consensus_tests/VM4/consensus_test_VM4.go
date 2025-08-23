@@ -30,7 +30,7 @@ func RunConsensusTestControlVM4(){
 
 	
 
-	gossipnetwork.InitializeGossipNetwork(roomID, 3000, false, false)
+	gossipnetwork.InitializeGossipNetwork(roomID, 3000, false, true)
 
 
 

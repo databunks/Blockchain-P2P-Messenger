@@ -659,6 +659,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 		ackData := fmt.Sprintf("ACK for message %s from %s", msg.ID, msg.PublicKey)
 		gn.GossipMessage("ack", "broadcast", ackData, senderID, msg.RoomID, "")
 
+		fmt.Printf("blockChainState: %v\n", blockChainState)
 		if blockChainState {
 			// Check if we already have this message in processing
 			messageAlreadyProcessing := false
@@ -668,6 +669,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 					break
 				}
 			}
+			fmt.Printf("messageAlreadyProcessing: %v\n", messageAlreadyProcessing)
 
 			// Only add to processing if we don't already have it
 			if !messageAlreadyProcessing {
