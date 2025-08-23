@@ -230,9 +230,21 @@ func (gn *GossipNetwork) authenticateMessage(msg GossipMessage, peer GossipNode)
 	fmt.Printf("  Peer Public Key: '%s'\n", peer.PublicKey)
 	fmt.Printf("  Message bytes to verify: '%s'\n", string(messageBytes))
 
-	if !gn.VerifyMessageSignature(messageBytes, msg.Signature, peer.PublicKey) {
-		fmt.Printf("Authentication failed: invalid signature from %s\n", peer.PublicKey)
-		return false
+	// Try new format first
+	if gn.VerifyMessageSignature(messageBytes, msg.Signature, peer.PublicKey) {
+		fmt.Printf("Signature verification successful with new format\n")
+	} else {
+		// Fallback: try old format (just the data field)
+		fmt.Printf("New format verification failed, trying old format...\n")
+		oldFormatBytes := []byte(msg.Data)
+		fmt.Printf("  Old format bytes to verify: '%s'\n", string(oldFormatBytes))
+
+		if gn.VerifyMessageSignature(oldFormatBytes, msg.Signature, peer.PublicKey) {
+			fmt.Printf("Signature verification successful with old format\n")
+		} else {
+			fmt.Printf("Authentication failed: invalid signature from %s (both formats failed)\n", peer.PublicKey)
+			return false
+		}
 	}
 
 	// Check if sender's public key matches peer's public key
