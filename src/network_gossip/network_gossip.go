@@ -689,6 +689,11 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 			if pendingAcks, exists := gn.pendingAcks[msg.ID]; exists {
 				fmt.Printf("NODE %d: Found %d pending acks for message %s\n", gn.nodeID, len(pendingAcks), msg.ID)
 				fmt.Printf("NODE %d: Initial AcksReceived: %d\n", gn.nodeID, msg.AcksReceived)
+
+				// CRITICAL FIX: Clear processedAcks for this message so pending acks can be processed fresh
+				delete(gn.processedAcks, msg.ID)
+				fmt.Printf("NODE %d: Cleared processedAcks for message %s to allow pending ack processing\n", gn.nodeID, msg.ID)
+
 				for _, pendingAck := range pendingAcks {
 					fmt.Printf("NODE %d: Processing pending ack from %s\n", gn.nodeID, pendingAck.PublicKey)
 					// Process each pending ack
