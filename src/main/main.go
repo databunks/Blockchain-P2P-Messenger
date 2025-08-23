@@ -2,9 +2,7 @@ package main
 
 import (
 	"blockchain-p2p-messenger/src/consensus"
-	gossipnetwork "blockchain-p2p-messenger/src/network_gossip"
 	consensustestsVM1 "blockchain-p2p-messenger/src/simulations/consensus_tests/VM1"
-	gossip_test_VM1 "blockchain-p2p-messenger/src/simulations/gossip_tests/VM1"
 	"encoding/gob"
 )
 
