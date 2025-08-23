@@ -660,6 +660,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 
 		fmt.Printf("blockChainState: %v\n", blockChainState)
 		if blockChainState {
+			gn.gossipMutex.Lock()
 			// Initialize acks received counter
 			msg.AcksReceived = 0
 
@@ -682,9 +683,25 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 			} else {
 				fmt.Printf("No pending acks found for message %s\n", msg.ID)
 			}
+			gn.gossipMutex.Unlock()
 
-			gn.msgsToProcess = append(gn.msgsToProcess, &msg)
-			fmt.Printf("Added message %s to msgsToProcess, total count: %d\n", msg.ID, len(gn.msgsToProcess))
+			gn.gossipMutex.Lock()
+			// Check if message is already being processed
+			alreadyProcessing := false
+			for _, existingMsg := range gn.msgsToProcess {
+				if existingMsg.ID == msg.ID {
+					alreadyProcessing = true
+					break
+				}
+			}
+
+			if !alreadyProcessing {
+				gn.msgsToProcess = append(gn.msgsToProcess, &msg)
+				fmt.Printf("Added message %s to msgsToProcess, total count: %d\n", msg.ID, len(gn.msgsToProcess))
+			} else {
+				fmt.Printf("Message %s already being processed, skipping duplicate\n", msg.ID)
+			}
+			gn.gossipMutex.Unlock()
 
 			// Start goroutine to wait for acks
 			go func(messageID string) {
@@ -692,30 +709,41 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 				for i := 0; i < 15; i++ {
 					time.Sleep(1 * time.Second)
 
+					gn.gossipMutex.Lock()
 					// Find the message and check if it received enough acks
-					for j, processingMsg := range gn.msgsToProcess {
-						if processingMsg.ID == messageID {
-							if processingMsg.AcksReceived >= thresholdAcks {
-								// Save to blockchain
-								chatBlockData := fmt.Sprintf("CHAT_MSG{Sender: %s, Type: %s, Data: %s, Timestamp: %d, Signature: %s}",
-									processingMsg.PublicKey, processingMsg.Type, processingMsg.Data, processingMsg.Timestamp, processingMsg.Signature)
-
-								if err := blockchain.AddBlock(chatBlockData, msg.RoomID); err != nil {
-									fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
-								} else {
-									fmt.Printf("Yay\n")
-								}
-
-								// Remove from processing list
-								gn.msgsToProcess = append(gn.msgsToProcess[:j], gn.msgsToProcess[j+1:]...)
-								return // Exit early once threshold is reached
-							}
+					var messageIndex = -1
+					var processingMsg *GossipMessage
+					for j, msg := range gn.msgsToProcess {
+						if msg.ID == messageID {
+							messageIndex = j
+							processingMsg = msg
 							break
 						}
 					}
+
+					if messageIndex != -1 && processingMsg != nil {
+						if processingMsg.AcksReceived >= thresholdAcks {
+							// Save to blockchain
+							chatBlockData := fmt.Sprintf("CHAT_MSG{Sender: %s, Type: %s, Data: %s, Timestamp: %d, Signature: %s}",
+								processingMsg.PublicKey, processingMsg.Type, processingMsg.Data, processingMsg.Timestamp, processingMsg.Signature)
+
+							if err := blockchain.AddBlock(chatBlockData, msg.RoomID); err != nil {
+								fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
+							} else {
+								fmt.Printf("Message %s saved to blockchain with %d acks\n", messageID, processingMsg.AcksReceived)
+							}
+
+							// Remove from processing list
+							gn.msgsToProcess = append(gn.msgsToProcess[:messageIndex], gn.msgsToProcess[messageIndex+1:]...)
+							gn.gossipMutex.Unlock()
+							return // Exit early once threshold is reached
+						}
+					}
+					gn.gossipMutex.Unlock()
 				}
 
 				// If we reach here, the message didn't get enough acks in time
+				gn.gossipMutex.Lock()
 				for i, processingMsg := range gn.msgsToProcess {
 					if processingMsg.ID == messageID {
 						fmt.Printf("Message %s did not receive enough acks within timeout period. Received: %d, Required: %d\n", messageID, processingMsg.AcksReceived, thresholdAcks)
@@ -724,6 +752,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 						break
 					}
 				}
+				gn.gossipMutex.Unlock()
 			}(msg.ID)
 		}
 
@@ -739,6 +768,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 		fmt.Printf("Current msgsToProcess count: %d\n", len(gn.msgsToProcess))
 
 		if blockChainState {
+			gn.gossipMutex.Lock()
 			// Check if we've already processed this ack from this peer
 			if gn.processedAcks[messageID] == nil {
 				gn.processedAcks[messageID] = make(map[string]bool)
@@ -766,7 +796,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 								if err := blockchain.AddBlock(chatBlockData, msg.RoomID); err != nil {
 									fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
 								} else {
-									fmt.Printf("Yay\n")
+									fmt.Printf("Message %s saved to blockchain with %d acks\n", messageID, processingMsg.AcksReceived)
 								}
 
 								// Remove from processing list
@@ -795,6 +825,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 					fmt.Printf("Failed to save ack message to blockchain: %v\n", err)
 				}
 			}
+			gn.gossipMutex.Unlock()
 		}
 
 		fmt.Println("Received ack from: ")
