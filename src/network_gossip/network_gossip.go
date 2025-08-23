@@ -659,6 +659,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 		ackData := fmt.Sprintf("ACK for message %s from %s", msg.ID, msg.PublicKey)
 		gn.GossipMessage("ack", "broadcast", ackData, senderID, msg.RoomID, "")
 
+		fmt.Printf("NODE %d: blockChainState check: %v\n", gn.nodeID, gn.blockChainState)
 		if gn.blockChainState {
 			gn.gossipMutex.Lock()
 			// Initialize acks received counter
@@ -674,6 +675,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 			}
 
 			if alreadyProcessing {
+				fmt.Printf("NODE %d: SKIPPING - Message %s already being processed\n", gn.nodeID, msg.ID)
 				gn.gossipMutex.Unlock()
 				return // Skip if already processing
 			}
@@ -696,6 +698,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 
 			// Add message to processing list
 			gn.msgsToProcess = append(gn.msgsToProcess, &msg)
+			fmt.Printf("NODE %d: SUCCESS - Added message %s to msgsToProcess, total count: %d\n", gn.nodeID, msg.ID, len(gn.msgsToProcess))
 			gn.gossipMutex.Unlock()
 
 			// Start goroutine to wait for acks with timeout
@@ -749,6 +752,8 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 					}
 				}
 			}(msg.ID)
+		} else {
+			fmt.Printf("NODE %d: SKIPPING blockchain processing - blockChainState is false\n", gn.nodeID)
 		}
 
 	case "ack":
