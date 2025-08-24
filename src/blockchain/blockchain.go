@@ -6,22 +6,23 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
-
-const dataDir = "data"
 
 // Block represents each 'item' in the blockchain
 type Block struct {
 	Index     int    `json:"index"`
 	Timestamp string `json:"timestamp"`
 	Data      string `json:"data"`
-	Hash      string `json:"hash"`
 	PrevHash  string `json:"prev_hash"`
+	Hash      string `json:"hash"`
 }
 
-// Blockchain is a series of validated Blocks
-var blockchains map[string][]Block // roomID -> []Block
+var (
+	blockchains      = make(map[string][]Block)
+	blockchainsMutex sync.RWMutex
+)
 
 func init() {
 	blockchains = make(map[string][]Block)
@@ -85,7 +86,7 @@ func ReplaceChain(newBlocks []Block, roomID string) error {
 
 // SaveBlockchainToFile saves the current blockchain to a file
 func SaveBlockchainToFile(roomID string) error {
-	roomDir := filepath.Join(dataDir, roomID)
+	roomDir := filepath.Join("src/main/data", roomID)
 	if err := os.MkdirAll(roomDir, 0755); err != nil {
 		return err
 	}
@@ -119,7 +120,11 @@ func LoadBlockchainFromFile(roomID string) error {
 	// Small delay to prevent race condition
 	time.Sleep(50 * time.Millisecond)
 
-	roomDir := filepath.Join(dataDir, roomID)
+	// Lock for writing to prevent concurrent map access
+	blockchainsMutex.Lock()
+	defer blockchainsMutex.Unlock()
+
+	roomDir := filepath.Join("src/main/data", roomID)
 	if err := os.MkdirAll(roomDir, 0755); err != nil {
 		return err
 	}
