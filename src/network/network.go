@@ -619,7 +619,7 @@ func SendBlockchainToStatCollector(roomID string, port int) {
 			}
 
 			fmt.Printf("✅ Blockchain data sent to stat collector successfully\n")
-	log.Printf("📊 Sent blockchain data: %d bytes for room %s\n", len(blockchainData), roomID)
+			log.Printf("📊 Sent blockchain data: %d bytes for room %s\n", len(blockchainData), roomID)
 
 		}
 	}
