@@ -80,7 +80,7 @@ func main() {
 
 	// network.InitializeNetwork(roomID, true)
 
-	consensustestsVM1.RunConsensusTestControlVM1()
+	consensustestsVM1.RunConsensusTestCase1VM1()
 	
 
 

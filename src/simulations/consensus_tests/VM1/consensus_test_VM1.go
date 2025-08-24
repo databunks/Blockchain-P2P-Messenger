@@ -59,6 +59,31 @@ func RunConsensusTestControlVM1() {
 
 // Case 1: 1 attacker (1 / 4 Attacker nodes)
 func RunConsensusTestCase1VM1() {
+	// Setup Peers
+	roomID := "room-xyz-987"
+
+	peerDetails.AddPeer(publicKey_VM1, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey_VM1), false, roomID)
+	peerDetails.AddPeer(publicKey2_VM2, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey2_VM2), false, roomID)
+	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), false, roomID)
+	peerDetails.AddPeer(publicKey4_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey4_VM4), false, roomID)
+
+	// Set this to true to enable spam injection mode
+	injectSpam := false
+	noAckBlockchainSave := false
+
+	gossipNet, err := gossipnetwork.InitializeGossipNetwork(roomID, 3000, false, true, noAckBlockchainSave, injectSpam)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	// Store the gossip network for later use
+	globalGossipNet = gossipNet
+	globalRoomID = roomID
+
+	fmt.Println("VM1: Network initialized, waiting for start gossiping command...")
+
+	// Start listening for commands from stat collector
+	go listenForCommands()
 
 }
 
@@ -153,12 +178,12 @@ func executeGossipSequence(runNumber int) {
 	// Message 1
 	globalGossipNet.GossipMessage("chat", "broadcast", fmt.Sprintf("Consensus Test Message 1 (Run %d)", runNumber), 1, globalRoomID, "")
 	fmt.Println("VM1: Sent message 1")
-	time.Sleep(time.Second * 1)
+	//time.Sleep(time.Second * 1)
 
 	// Message 2
 	globalGossipNet.GossipMessage("chat", "broadcast", fmt.Sprintf("Consensus Test Message 2 (Run %d)", runNumber), 1, globalRoomID, "")
 	fmt.Println("VM1: Sent message 2")
-	time.Sleep(time.Second * 1)
+	//time.Sleep(time.Second * 1)
 
 	// Message 3
 	globalGossipNet.GossipMessage("chat", "broadcast", fmt.Sprintf("Consensus Test Message 3 (Run %d)", runNumber), 1, globalRoomID, "")

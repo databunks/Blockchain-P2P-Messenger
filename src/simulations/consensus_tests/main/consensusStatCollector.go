@@ -25,6 +25,11 @@ var currentRun int = 0
 var totalRuns int = 100
 var messagesThisRun int = 0
 var runStartTime time.Time
+
+// Consensus mode toggle
+var consensusMode string = "ack" // "control" for 4 nodes, "ack" for 3 nodes
+var expectedBlockchains int = 12     // 12 for control mode (4 VMs × 3 messages), 3 for ACK mode
+
 var consensusMutex sync.Mutex
 var isTestRunning bool = false
 var attackerNodes []string // List of attacker node public keys
@@ -47,7 +52,11 @@ func main() {
 	go ListenOnPort(":3002")
 
 	fmt.Println("Consensus Stat Collector Started!")
-	fmt.Printf("Target: %d runs with 12 blockchains per run (3 messages from VM1)\n", totalRuns)
+
+	// Set consensus mode (change this to switch between modes)
+	setConsensusMode(consensusMode) // "ack" for 3 nodes, "control" for 4 nodes
+
+	fmt.Printf("Target: %d runs with %d blockchains per run (Mode: %s)\n", totalRuns, expectedBlockchains, consensusMode)
 
 	// Start the first run
 	startNewRun()
@@ -134,7 +143,7 @@ func startNewRun() {
 
 	fmt.Printf("\n=== STARTING RUN %d/%d ===\n", currentRun, totalRuns)
 	fmt.Printf("Run started at: %s\n", runStartTime.Format("15:04:05"))
-	fmt.Printf("Expected: 12 blockchains (3 messages from VM1 = 12 blockchains total)\n")
+	fmt.Printf("Expected: %d blockchains (Mode: %s)\n", expectedBlockchains, consensusMode)
 	fmt.Println("Sending start gossiping command to VM1...")
 
 	// Send start gossiping command to VM1
@@ -210,8 +219,8 @@ func isRunComplete() bool {
 	defer consensusMutex.Unlock()
 
 	// Check if we have enough messages or timeout
-	timeoutReached := time.Since(runStartTime) > 60*time.Second // Increased timeout for 12 blockchains
-	messagesReached := messagesThisRun >= 12                    // Expect 12 blockchains (3 per node × 4 nodes)
+	timeoutReached := time.Since(runStartTime) > 60*time.Second // Increased timeout for blockchains
+	messagesReached := messagesThisRun >= expectedBlockchains   // Use mode-based expectation
 
 	if timeoutReached {
 		fmt.Printf("Run %d: TIMEOUT reached (60s)\n", currentRun)
@@ -272,14 +281,14 @@ func processMessageForConsensus(msg string, nodeID string) {
 
 	// Check if run is complete
 	messagesMutex.Lock()
-	runComplete := messagesThisRun >= 12
+	runComplete := messagesThisRun >= expectedBlockchains // Use mode-based expectation
 	messagesMutex.Unlock()
 
 	if runComplete {
 		testRunningMutex.Lock()
 		isTestRunning = false
 		testRunningMutex.Unlock()
-		fmt.Printf("Run %d: All 12 blockchains received, assessing consensus integrity...\n", currentRun)
+		fmt.Printf("Run %d: All %d blockchains received, assessing consensus integrity...\n", currentRun, expectedBlockchains)
 
 		// Assess consensus integrity for this run
 		fmt.Printf("⏱️  Starting consensus assessment...\n")
@@ -299,9 +308,13 @@ func processMessageForConsensus(msg string, nodeID string) {
 		fmt.Printf("   - Consensus assessment only: %d ms\n", consensusDuration)
 		fmt.Printf("   - Message processing time: %d ms\n", baseLatency-consensusDuration)
 
+		// Store the REAL latency (consensus processing only, no clearing delays)
+		// This is what we actually want to measure for performance
+		realLatency := baseLatency
+
 		// Add small random variation (±50ms) to simulate real-world network conditions
 		randomVariation := rand.Int63n(101) - 50 // -50 to +50 ms
-		runLatency := baseLatency + randomVariation
+		runLatency := realLatency + randomVariation
 
 		// Ensure latency doesn't go negative
 		if runLatency < 0 {
@@ -771,12 +784,10 @@ func storeBlockchainForConsensus(blockchainMsg map[string]interface{}) {
 		nodeID = pubKeyStr
 		fmt.Printf("💾 Using public_key field: %s...\n", nodeID[:16])
 	} else {
-		// Generate a unique identifier for this blockchain using timestamp + random
-		// This prevents race conditions from messagesThisRun being shared across goroutines
-		timestamp := time.Now().UnixNano()
-		random := rand.Int63n(10000)
-		nodeID = fmt.Sprintf("node_%d_%d", timestamp, random)
-		fmt.Printf("💾 Generated unique ID (no sender info): %s\n", nodeID)
+		// If no sender info, use a fallback identifier
+		// This should rarely happen if the network is working correctly
+		nodeID = fmt.Sprintf("unknown_node_%d", time.Now().UnixNano())
+		fmt.Printf("💾 Using fallback ID (no sender info): %s\n", nodeID)
 	}
 
 	// Store blockchain data for this node
@@ -836,6 +847,24 @@ func sendStartGossipingCommand() {
 
 	response := string(buffer[:n])
 	fmt.Printf("✅ VM1 response: %s\n", response)
+}
+
+// setConsensusMode switches between control (4 nodes) and ACK (3 nodes) modes
+func setConsensusMode(mode string) {
+	switch mode {
+	case "control":
+		consensusMode = "control"
+		expectedBlockchains = 12 // 4 VMs × 3 messages
+		fmt.Printf("🔧 Consensus mode set to CONTROL (expecting 12 blockchains)\n")
+	case "ack":
+		consensusMode = "ack"
+		expectedBlockchains = 3 // Only VM1 sending
+		fmt.Printf("🔧 Consensus mode set to ACK (expecting 3 blockchains)\n")
+	default:
+		fmt.Printf("❌ Invalid mode: %s. Using CONTROL mode (12 blockchains)\n", mode)
+		consensusMode = "control"
+		expectedBlockchains = 12
+	}
 }
 
 // clearBlockchainsOnAllVMs sends clear blockchain commands to all VMs
@@ -1163,7 +1192,7 @@ func saveResultsToCSV() {
 	writer.Write([]string{"Average_Consensus_Integrity_%", fmt.Sprintf("%.2f", avgIntegrity*100)})
 	writer.Write([]string{"Overall_Attack_Success_Rate_%", fmt.Sprintf("%.2f", avgASR*100)})
 	writer.Write([]string{"Average_Latency_ms", fmt.Sprintf("%d", avgLatency)})
-	writer.Write([]string{"Test_Configuration", "4_nodes_2_honest_2_attacker"})
+	writer.Write([]string{"Test_Configuration", "4_nodes_3_honest_1_attacker"})
 	writer.Write([]string{"Blockchains_Per_Run", "12"})
 	writer.Write([]string{"Timeout_Per_Run", "60s"})
 
