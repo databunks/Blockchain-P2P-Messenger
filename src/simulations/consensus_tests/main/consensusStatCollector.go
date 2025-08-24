@@ -359,9 +359,9 @@ func processMessageForConsensus(msg string, nodeID string) {
 			fmt.Printf("Run %d: Consensus Integrity: %.2f%% >= %.0f%% → ✅ ATTACK FAILED (Latency: %d ms)\n", currentRun, integrityScore*100, attackThreshold*100, runLatency)
 		}
 
-		// Wait longer to ensure all blockchains are properly sent before clearing
-		fmt.Printf("⏳ Waiting 10 seconds to ensure all blockchains are sent...\n")
-		time.Sleep(10 * time.Second)
+		// Wait briefly to ensure all blockchains are properly sent before clearing
+		fmt.Printf("⏳ Waiting 2 seconds to ensure all blockchains are sent...\n")
+		time.Sleep(2 * time.Second)
 
 		// Clear blockchains on all VMs before next run
 		fmt.Printf("🧹 Clearing blockchains on all VMs for next run...\n")
@@ -370,13 +370,13 @@ func processMessageForConsensus(msg string, nodeID string) {
 		clearDuration := time.Since(clearStartTime).Milliseconds()
 		fmt.Printf("⏱️  Blockchain clearing completed in %d ms\n", clearDuration)
 
-		// Wait longer for cleanup to prevent cross-run contamination
-		fmt.Printf("⏳ Waiting 15 seconds for blockchain cleanup and isolation...\n")
-		time.Sleep(15 * time.Second)
+		// Wait briefly for cleanup to prevent cross-run contamination
+		fmt.Printf("⏳ Waiting 3 seconds for blockchain cleanup and isolation...\n")
+		time.Sleep(3 * time.Second)
 
-		// Add extra barrier to ensure complete isolation
+		// Brief barrier to ensure complete isolation
 		fmt.Printf("🚧 Ensuring complete run isolation...\n")
-		time.Sleep(5 * time.Second)
+		time.Sleep(1 * time.Second)
 	}
 }
 
