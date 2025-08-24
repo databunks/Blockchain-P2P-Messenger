@@ -566,7 +566,7 @@ func SendBlockchainToStatCollector(roomID string, port int, isAttacker bool) {
 	var statCollectorPublicKey string = "0000005ed266dc58d687b6ed84af4b4657162033cf379e9d8299bba941ae66e0"
 
 	// Read blockchain data from file
-	blockchainFilePath := fmt.Sprintf("data/%s/blockchain.json", roomID)
+	blockchainFilePath := fmt.Sprintf("src/main/data/%s/blockchain.json", roomID)
 	blockchainData, err := os.ReadFile(blockchainFilePath)
 	if err != nil {
 		log.Printf("Error reading blockchain file %s: %v\n", blockchainFilePath, err)
@@ -591,8 +591,8 @@ func SendBlockchainToStatCollector(roomID string, port int, isAttacker bool) {
 				"timestamp":    time.Now().Unix(),
 				"data":         "SPAM_MSG{Attacker: FAKE_MESSAGE_1}",
 				"previousHash": "0000000000000000000000000000000000000000000000000000000000000000",
-				"hash":         "SPAM_HASH_1_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
-				"signature":    "SPAM_SIGNATURE_1_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
+				"hash":         "SPAM_HASH_1_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
+				"signature":    "SPAM_SIGNATURE_1_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
 			},
 			{
 				"index":        len(blockchain) + 1,
@@ -600,7 +600,7 @@ func SendBlockchainToStatCollector(roomID string, port int, isAttacker bool) {
 				"data":         "SPAM_MSG{Attacker: FAKE_MESSAGE_2}",
 				"previousHash": "SPAM_HASH_1_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
 				"hash":         "SPAM_HASH_2_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
-				"signature":    "SPAM_SIGNATURE_2_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
+				"signature":    "SPAM_SIGNATURE_2_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
 			},
 			{
 				"index":        len(blockchain) + 2,
@@ -608,7 +608,7 @@ func SendBlockchainToStatCollector(roomID string, port int, isAttacker bool) {
 				"data":         "SPAM_MSG{Attacker: FAKE_MESSAGE_3}",
 				"previousHash": "SPAM_HASH_2_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
 				"hash":         "SPAM_HASH_3_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
-				"signature":    "SPAM_SIGNATURE_3_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
+				"signature":    "SPAM_SIGNATURE_3_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
 			},
 		}
 
