@@ -20,7 +20,7 @@ var timestamp_arrived []uint64
 
 // Consensus testing variables
 var currentRun int = 0
-var totalRuns int = 100
+var totalRuns int = 2
 var messagesThisRun int = 0
 var runStartTime time.Time
 var consensusMutex sync.Mutex
@@ -125,6 +125,7 @@ func startNewRun() {
 
 	// Send start gossiping command to VM1
 	sendStartGossipingCommand()
+
 }
 
 // sendStartMessageToAttackerNodes notifies attacker nodes to begin their attack

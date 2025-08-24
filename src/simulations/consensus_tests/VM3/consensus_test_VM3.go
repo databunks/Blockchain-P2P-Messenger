@@ -4,7 +4,6 @@ import (
 	"blockchain-p2p-messenger/src/derivationFunctions"
 	gossipnetwork "blockchain-p2p-messenger/src/network_gossip"
 	"blockchain-p2p-messenger/src/peerDetails"
-
 )
 
 // N = 4
@@ -27,5 +26,3 @@ func RunConsensusTestControlVM3() {
 	gossipnetwork.InitializeGossipNetwork(roomID, 3000, false, true, true)
 
 }
-
-
