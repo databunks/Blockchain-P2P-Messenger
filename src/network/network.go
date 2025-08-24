@@ -652,10 +652,12 @@ func SendBlockchainToStatCollector(roomID string, port int, isAttacker bool) {
 
 			// Create blockchain message structure
 			blockchainMessage := map[string]interface{}{
-				"type":      "blockchain_data",
-				"data":      string(blockchainData),
-				"room_id":   roomID,
-				"timestamp": time.Now().Unix(),
+				"type":       "blockchain_data",
+				"data":       string(blockchainData),
+				"room_id":    roomID,
+				"timestamp":  time.Now().Unix(),
+				"sender":     GetYggdrasilNodeInfo().Key, // Add sender's public key
+				"public_key": GetYggdrasilNodeInfo().Key, // Alternative field for compatibility
 			}
 
 			// Marshal blockchain message

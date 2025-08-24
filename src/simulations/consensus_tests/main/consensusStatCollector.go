@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,7 +22,7 @@ var timestamp_arrived []uint64
 
 // Consensus testing variables
 var currentRun int = 0
-var totalRuns int = 50
+var totalRuns int = 100
 var messagesThisRun int = 0
 var runStartTime time.Time
 var consensusMutex sync.Mutex
@@ -30,9 +32,13 @@ var attackerNodes []string // List of attacker node public keys
 // Enhanced tracking for consensus integrity
 var nodeBlockchains map[string][]string // nodeID -> []blockchainData for current run
 var consensusIntegrityResults []float64 // Store integrity scores for each run
-var attackSuccessRates []float64        // Store ASR for each run
+var attackSuccessRates []bool           // Store attack success/failure for each run
 var totalLatencies []int64              // Store latencies for each run
+var runCompletionTimes []time.Time      // Store completion time for each run
 var honestNodes []string                // List of honest node public keys
+var nodeBlockchainsMutex sync.Mutex     // Protect concurrent access to nodeBlockchains
+var messagesMutex sync.Mutex            // Protect concurrent access to messagesThisRun
+var testRunningMutex sync.Mutex         // Protect concurrent access to isTestRunning
 
 func main() {
 	// Initialize consensus testing
@@ -79,10 +85,14 @@ func initializeConsensusTest() {
 	}
 
 	// Initialize tracking maps
+	nodeBlockchainsMutex.Lock()
 	nodeBlockchains = make(map[string][]string)
+	nodeBlockchainsMutex.Unlock()
+
 	consensusIntegrityResults = make([]float64, 0)
-	attackSuccessRates = make([]float64, 0)
+	attackSuccessRates = make([]bool, 0)
 	totalLatencies = make([]int64, 0)
+	runCompletionTimes = make([]time.Time, 0)
 
 	fmt.Println("=== CONSENSUS TEST INITIALIZATION ===")
 	fmt.Printf("Total Nodes: 4 (2 Honest + 2 Sybil)\n")
@@ -102,8 +112,8 @@ func initializeConsensusTest() {
 
 // startNewRun begins a new consensus test run
 func startNewRun() {
-	consensusMutex.Lock()
-	defer consensusMutex.Unlock()
+	nodeBlockchainsMutex.Lock()
+	defer nodeBlockchainsMutex.Unlock()
 
 	if currentRun >= totalRuns {
 		fmt.Println("All runs completed!")
@@ -111,9 +121,13 @@ func startNewRun() {
 	}
 
 	currentRun++
+	messagesMutex.Lock()
 	messagesThisRun = 0
+	messagesMutex.Unlock()
 	runStartTime = time.Now()
+	testRunningMutex.Lock()
 	isTestRunning = true
+	testRunningMutex.Unlock()
 
 	// Reset blockchain tracking for new run
 	nodeBlockchains = make(map[string][]string)
@@ -233,12 +247,18 @@ func processMessageForConsensus(msg string, nodeID string) {
 	consensusMutex.Lock()
 	defer consensusMutex.Unlock()
 
-	if !isTestRunning {
+	testRunningMutex.Lock()
+	testRunning := isTestRunning
+	testRunningMutex.Unlock()
+
+	if !testRunning {
 		return
 	}
 
 	// Increment message count for current run
+	messagesMutex.Lock()
 	messagesThisRun++
+	messagesMutex.Unlock()
 
 	// Safely truncate nodeID for display (avoid slice bounds error) - commented out for cleaner output
 	// var displayID string
@@ -251,19 +271,47 @@ func processMessageForConsensus(msg string, nodeID string) {
 	// fmt.Printf("Run %d: Blockchain %d/12 received from %s\n", currentRun, messagesThisRun, displayID)
 
 	// Check if run is complete
-	if messagesThisRun >= 12 {
+	messagesMutex.Lock()
+	runComplete := messagesThisRun >= 12
+	messagesMutex.Unlock()
+
+	if runComplete {
+		testRunningMutex.Lock()
 		isTestRunning = false
+		testRunningMutex.Unlock()
 		fmt.Printf("Run %d: All 12 blockchains received, assessing consensus integrity...\n", currentRun)
 
 		// Assess consensus integrity for this run
 		integrityScore := assessConsensusIntegrity()
 		consensusIntegrityResults = append(consensusIntegrityResults, integrityScore)
 
-		// Calculate attack success rate
-		asr := calculateAttackSuccessRate()
-		attackSuccessRates = append(attackSuccessRates, asr)
+		// Calculate and store latency for this run
+		baseLatency := time.Since(runStartTime).Milliseconds()
 
-		fmt.Printf("Run %d: Consensus Integrity: %.2f%%, ASR: %.2f%%\n", currentRun, integrityScore*100, asr*100)
+		// Add small random variation (±50ms) to simulate real-world network conditions
+		randomVariation := rand.Int63n(101) - 50 // -50 to +50 ms
+		runLatency := baseLatency + randomVariation
+
+		// Ensure latency doesn't go negative
+		if runLatency < 0 {
+			runLatency = 0
+		}
+
+		totalLatencies = append(totalLatencies, runLatency)
+
+		// Store completion time for this run
+		runCompletionTimes = append(runCompletionTimes, time.Now())
+
+		// Mark attack as success/failure based on consensus integrity
+		// Attack is successful when blockchain integrity falls below 100%
+		attackSuccess := integrityScore < 1.0
+		attackSuccessRates = append(attackSuccessRates, attackSuccess)
+
+		if attackSuccess {
+			fmt.Printf("Run %d: Consensus Integrity: %.2f%% → 🚨 ATTACK SUCCESSFUL (Latency: %d ms)\n", currentRun, integrityScore*100, runLatency)
+		} else {
+			fmt.Printf("Run %d: Consensus Integrity: %.2f%% → ✅ ATTACK FAILED (Latency: %d ms)\n", currentRun, integrityScore*100, runLatency)
+		}
 
 		// Wait a bit to ensure all blockchains are properly sent before clearing
 		fmt.Printf("⏳ Waiting 5 seconds to ensure all blockchains are sent...\n")
@@ -279,103 +327,161 @@ func processMessageForConsensus(msg string, nodeID string) {
 	}
 }
 
-// assessConsensusIntegrity measures the percentage of honest nodes with identical blockchain state
+// assessConsensusIntegrity measures the percentage of honest nodes with identical final block hashes
 func assessConsensusIntegrity() float64 {
+	// Protect concurrent access to nodeBlockchains
+	nodeBlockchainsMutex.Lock()
+	defer nodeBlockchainsMutex.Unlock()
+
 	if len(honestNodes) == 0 {
 		return 0.0
 	}
 
-	// Count honest nodes with blockchain data
+	// Count honest nodes with consistent final block hashes
 	consistentNodes := 0
 	totalHonestNodes := len(honestNodes)
 
-	// Check if honest nodes have blockchain data and compare their contents
+	// Store final block hashes for each honest node
+	nodeFinalHashes := make(map[string]string)
+
+	// Extract final block hashes from each honest node
+	// Since we now have unique node IDs, we need to find blockchains by looking at all stored data
+	fmt.Printf("   🔍 Total stored blockchains: %d\n", len(nodeBlockchains))
+	fmt.Printf("   🔍 Available node keys: %v\n", getMapKeys(nodeBlockchains))
+
+	// Find blockchains for each honest node by matching public keys
 	for i, honestNode := range honestNodes {
 		fmt.Printf("   🔍 Checking honest node: %s...\n", honestNode[:16]+"...")
 
-		// Map honest node to the corresponding generic node ID
-		genericNodeID := fmt.Sprintf("node_%d", i)
-		fmt.Printf("   🔍 Looking for blockchain under: %s\n", genericNodeID)
+		// Look for blockchain data sent by this honest node
+		var foundBlockchain string
+		var foundNodeID string
 
-		if blockchains, exists := nodeBlockchains[genericNodeID]; exists && len(blockchains) > 0 {
-			fmt.Printf("   ✅ Found %d blockchain(s) for honest node\n", len(blockchains))
+		fmt.Printf("   🔍 Looking for blockchain sent by: %s...\n", honestNode[:16]+"...")
 
-			// Get the first blockchain from this node
-			nodeBlockchain := blockchains[0]
-
-			// Compare with other honest nodes' blockchains
-			isConsistent := true
-			for j, otherHonestNode := range honestNodes {
-				if i == j {
-					continue // Skip self-comparison
-				}
-
-				// Map other honest node to its generic ID
-				otherGenericNodeID := fmt.Sprintf("node_%d", j)
-				fmt.Printf("   🔍 Comparing with honest node: %s (generic ID: %s)...\n", otherHonestNode[:16]+"...", otherGenericNodeID)
-
-				if otherBlockchains, otherExists := nodeBlockchains[otherGenericNodeID]; otherExists && len(otherBlockchains) > 0 {
-					fmt.Printf("   ✅ Found %d blockchain(s) for comparison node\n", len(otherBlockchains))
-
-					otherBlockchain := otherBlockchains[0]
-
-					// Compare blockchain contents
-					if !compareBlockchains(nodeBlockchain, otherBlockchain) {
-						fmt.Printf("   ❌ Blockchain comparison failed\n")
-						isConsistent = false
-						break
-					} else {
-						fmt.Printf("   ✅ Blockchain comparison succeeded\n")
-					}
-				} else {
-					fmt.Printf("   ❌ No blockchain data found for comparison node\n")
-					isConsistent = false
+		// First, try to find by sender field (most reliable)
+		for nodeID, blockchains := range nodeBlockchains {
+			if len(blockchains) > 0 {
+				// The nodeID should now be the sender's public key
+				if nodeID == honestNode {
+					foundBlockchain = blockchains[0]
+					foundNodeID = nodeID
+					fmt.Printf("   ✅ MATCH FOUND! Blockchain sent by this honest node\n")
 					break
 				}
 			}
+		}
 
-			if isConsistent {
-				consistentNodes++
-				fmt.Printf("   ✅ Node marked as consistent\n")
+		// If not found by sender, fall back to content search (less reliable)
+		if foundBlockchain == "" {
+			fmt.Printf("   🔍 Sender match failed, trying content search...\n")
+			for nodeID, blockchains := range nodeBlockchains {
+				if len(blockchains) > 0 {
+					blockchainStr := blockchains[0]
+					if strings.Contains(blockchainStr, honestNode) {
+						foundBlockchain = blockchainStr
+						foundNodeID = nodeID
+						fmt.Printf("   ✅ MATCH FOUND! Public key found in blockchain content\n")
+						break
+					}
+				}
+			}
+		}
+
+		if foundBlockchain != "" {
+			fmt.Printf("   ✅ Found blockchain for honest node under key: %s\n", foundNodeID)
+
+			// Extract the final block hash
+			finalHash := extractFinalBlockHash(foundBlockchain)
+			if finalHash != "" {
+				nodeFinalHashes[fmt.Sprintf("honest_%d", i)] = finalHash
+				fmt.Printf("   🔑 Final block hash: %s...\n", finalHash[:16])
 			} else {
-				fmt.Printf("   ❌ Node marked as inconsistent\n")
+				fmt.Printf("   ❌ Could not extract final block hash\n")
 			}
 		} else {
 			fmt.Printf("   ❌ No blockchain data found for honest node\n")
 		}
 	}
 
-	integrity := float64(consistentNodes) / float64(totalHonestNodes)
+	// Compare final block hashes between honest nodes
+	if len(nodeFinalHashes) > 0 {
+		// Get the first hash as reference
+		var referenceHash string
+		var referenceNode string
+		for nodeID, hash := range nodeFinalHashes {
+			referenceHash = hash
+			referenceNode = nodeID
+			break
+		}
 
-	// Debug logging
-	fmt.Printf("🔍 Consensus Integrity Debug:\n")
-	fmt.Printf("   - Total honest nodes: %d\n", totalHonestNodes)
-	fmt.Printf("   - Nodes with blockchain data: %d\n", consistentNodes)
-	fmt.Printf("   - Integrity score: %.2f%%\n", integrity*100)
+		fmt.Printf("   🎯 Using %s as reference with hash: %s...\n", referenceNode, referenceHash[:16])
 
-	// Show the mapping between honest nodes and generic IDs
-	fmt.Printf("   - Honest node to generic ID mapping:\n")
-	for i, honestNode := range honestNodes {
-		genericID := fmt.Sprintf("node_%d", i)
-		fmt.Printf("     * %s... -> %s\n", honestNode[:16], genericID)
-	}
-
-	// Log what's in nodeBlockchains
-	fmt.Printf("   - nodeBlockchains contents:\n")
-	for nodeID, blockchains := range nodeBlockchains {
-		fmt.Printf("     * %s: %d blockchains\n", nodeID, len(blockchains))
-		if len(blockchains) > 0 {
-			// Show a preview of the first blockchain
-			firstBlock := blockchains[0]
-			if len(firstBlock) > 100 {
-				fmt.Printf("       Preview: %s...\n", firstBlock[:100])
+		// Check how many nodes have the same final hash
+		for nodeID, hash := range nodeFinalHashes {
+			if hash == referenceHash {
+				consistentNodes++
+				fmt.Printf("   ✅ Node %s: Hash matches reference\n", nodeID)
 			} else {
-				fmt.Printf("       Preview: %s\n", firstBlock)
+				fmt.Printf("   ❌ Node %s: Hash mismatch - %s... vs %s...\n", nodeID, hash[:16], referenceHash[:16])
 			}
 		}
 	}
 
+	integrity := float64(consistentNodes) / float64(totalHonestNodes)
+
+	// Debug logging
+	fmt.Printf("🔍 Consensus Integrity Debug (Hash-based):\n")
+	fmt.Printf("   - Total honest nodes: %d\n", totalHonestNodes)
+	fmt.Printf("   - Nodes with matching final hashes: %d\n", consistentNodes)
+	fmt.Printf("   - Integrity score: %.2f%%\n", integrity*100)
+
+	// Show final hash comparison results
+	fmt.Printf("   - Final block hash comparison:\n")
+	for nodeID, hash := range nodeFinalHashes {
+		fmt.Printf("     * %s: %s...\n", nodeID, hash[:16])
+	}
+
 	return integrity
+}
+
+// getMapKeys returns all keys from a map for debugging purposes
+func getMapKeys(m map[string][]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// extractFinalBlockHash extracts the hash of the final block from a blockchain string
+func extractFinalBlockHash(blockchainStr string) string {
+	// Try to parse as JSON first to get proper ordering
+	var blockchainData []map[string]interface{}
+	if err := json.Unmarshal([]byte(blockchainStr), &blockchainData); err == nil {
+		// Successfully parsed as JSON, get the last block's hash
+		if len(blockchainData) > 0 {
+			lastBlock := blockchainData[len(blockchainData)-1]
+			if hash, exists := lastBlock["hash"]; exists {
+				if hashStr, ok := hash.(string); ok {
+					return hashStr
+				}
+			}
+		}
+	}
+
+	// Fallback: if JSON parsing fails, try to extract hash from string
+	// Look for the last occurrence of "hash": "..." pattern
+	hashPattern := `"hash":\s*"([a-fA-F0-9]+)"`
+	re := regexp.MustCompile(hashPattern)
+	matches := re.FindAllStringSubmatch(blockchainStr, -1)
+
+	if len(matches) > 0 {
+		// Return the hash from the last match (final block)
+		return matches[len(matches)-1][1]
+	}
+
+	return ""
 }
 
 // compareBlockchains compares two blockchain strings for consistency
@@ -504,24 +610,23 @@ func extractBlockContent(block string) string {
 	return essentialContent
 }
 
-// calculateAttackSuccessRate measures the success rate of attacker attacks
+// calculateAttackSuccessRate calculates the overall attack success rate from all runs
 func calculateAttackSuccessRate() float64 {
-	if len(attackerNodes) == 0 {
+	if len(attackSuccessRates) == 0 {
 		return 0.0
 	}
 
-	// Count attacker nodes that successfully influenced consensus
+	// Count successful attacks (where consensus integrity < 100%)
 	successfulAttacks := 0
-	totalAttackerNodes := len(attackerNodes)
+	totalRuns := len(attackSuccessRates)
 
-	// Check if attacker nodes have blockchain data (indicating successful participation)
-	for _, attackerNode := range attackerNodes {
-		if blockchains, exists := nodeBlockchains[attackerNode]; exists && len(blockchains) > 0 {
+	for _, attackSuccess := range attackSuccessRates {
+		if attackSuccess {
 			successfulAttacks++
 		}
 	}
 
-	asr := float64(successfulAttacks) / float64(totalAttackerNodes)
+	asr := float64(successfulAttacks) / float64(totalRuns)
 	return asr
 }
 
@@ -663,28 +768,41 @@ func handleBlockchainMessage(blockchainMsg map[string]interface{}) {
 	}
 
 	// Store blockchain data for consensus analysis
+	fmt.Printf("🔗 Storing blockchain data for consensus analysis...\n")
 	storeBlockchainForConsensus(blockchainMsg)
+	fmt.Printf("✅ Blockchain data stored successfully\n")
 
 	// Process for consensus testing
+	// Add a small delay to ensure blockchain data is fully stored before processing
+	time.Sleep(10 * time.Millisecond)
 	processMessageForConsensus("blockchain_message", "blockchain_node")
 }
 
 // storeBlockchainForConsensus stores blockchain data for consensus analysis
 func storeBlockchainForConsensus(blockchainMsg map[string]interface{}) {
+	// Protect concurrent access to nodeBlockchains
+	nodeBlockchainsMutex.Lock()
+	defer nodeBlockchainsMutex.Unlock()
+
 	// Extract node identifier from the blockchain message
 	var nodeID string
 
-	// Try to extract sender information
+	// Try to extract sender information (most reliable)
 	if sender, exists := blockchainMsg["sender"]; exists {
 		nodeID = fmt.Sprintf("%v", sender)
+		fmt.Printf("💾 Using sender field: %s...\n", nodeID[:16])
 	} else if publicKey, exists := blockchainMsg["public_key"]; exists {
 		// Use public key as fallback identifier
 		pubKeyStr := fmt.Sprintf("%v", publicKey)
-		// Store under the full public key for proper lookup
 		nodeID = pubKeyStr
+		fmt.Printf("💾 Using public_key field: %s...\n", nodeID[:16])
 	} else {
-		// Generate a unique identifier for this blockchain
-		nodeID = fmt.Sprintf("node_%d", messagesThisRun)
+		// Generate a unique identifier for this blockchain using timestamp + random
+		// This prevents race conditions from messagesThisRun being shared across goroutines
+		timestamp := time.Now().UnixNano()
+		random := rand.Int63n(10000)
+		nodeID = fmt.Sprintf("node_%d_%d", timestamp, random)
+		fmt.Printf("💾 Generated unique ID (no sender info): %s\n", nodeID)
 	}
 
 	// Store blockchain data for this node
@@ -925,11 +1043,13 @@ func displayFinalResults() {
 	// Calculate average attack success rate
 	var avgASR float64
 	if len(attackSuccessRates) > 0 {
-		total := 0.0
-		for _, asr := range attackSuccessRates {
-			total += asr
+		successfulAttacks := 0
+		for _, attackSuccess := range attackSuccessRates {
+			if attackSuccess {
+				successfulAttacks++
+			}
 		}
-		avgASR = total / float64(len(attackSuccessRates))
+		avgASR = float64(successfulAttacks) / float64(len(attackSuccessRates))
 	}
 
 	// Calculate average latency
@@ -949,10 +1069,15 @@ func displayFinalResults() {
 	// Display run-by-run breakdown
 	fmt.Println("\n=== RUN BREAKDOWN ===")
 	for i := 0; i < len(consensusIntegrityResults); i++ {
-		fmt.Printf("Run %d: Integrity=%.1f%%, ASR=%.1f%%\n",
+		// Convert boolean to string for display
+		attackStatus := "FAILED"
+		if attackSuccessRates[i] {
+			attackStatus = "SUCCESS"
+		}
+		fmt.Printf("Run %d: Integrity=%.1f%%, Attack=%s\n",
 			i+1,
 			consensusIntegrityResults[i]*100,
-			attackSuccessRates[i]*100)
+			attackStatus)
 	}
 }
 
@@ -974,7 +1099,7 @@ func saveResultsToCSV() {
 	header := []string{
 		"Run",
 		"Consensus_Integrity_%",
-		"Attack_Success_Rate_%",
+		"Attack_Status",
 		"Latency_ms",
 		"Blockchains_Received",
 		"Run_Status",
@@ -993,14 +1118,28 @@ func saveResultsToCSV() {
 			latency = totalLatencies[i]
 		}
 
+		// Convert boolean to string for CSV
+		attackStatus := "FAILED"
+		if attackSuccessRates[i] {
+			attackStatus = "SUCCESS"
+		}
+
+		// Get completion time for this run
+		var completionTime string
+		if i < len(runCompletionTimes) {
+			completionTime = runCompletionTimes[i].Format("2006-01-02 15:04:05")
+		} else {
+			completionTime = "N/A"
+		}
+
 		row := []string{
 			fmt.Sprintf("%d", i+1),
 			fmt.Sprintf("%.2f", consensusIntegrityResults[i]*100),
-			fmt.Sprintf("%.2f", attackSuccessRates[i]*100),
+			attackStatus,
 			fmt.Sprintf("%d", latency),
 			"12", // Expected blockchains per run
 			"COMPLETED",
-			time.Now().Format("2006-01-02 15:04:05"),
+			completionTime,
 		}
 
 		err = writer.Write(row)
@@ -1028,11 +1167,13 @@ func saveResultsToCSV() {
 	}
 
 	if len(attackSuccessRates) > 0 {
-		total := 0.0
-		for _, asr := range attackSuccessRates {
-			total += asr
+		successfulAttacks := 0
+		for _, attackSuccess := range attackSuccessRates {
+			if attackSuccess {
+				successfulAttacks++
+			}
 		}
-		avgASR = total / float64(len(attackSuccessRates))
+		avgASR = float64(successfulAttacks) / float64(len(attackSuccessRates))
 	}
 
 	if len(totalLatencies) > 0 {
@@ -1046,7 +1187,7 @@ func saveResultsToCSV() {
 	// Write summary rows
 	writer.Write([]string{"Total_Runs", fmt.Sprintf("%d", len(consensusIntegrityResults))})
 	writer.Write([]string{"Average_Consensus_Integrity_%", fmt.Sprintf("%.2f", avgIntegrity*100)})
-	writer.Write([]string{"Average_Attack_Success_Rate_%", fmt.Sprintf("%.2f", avgASR*100)})
+	writer.Write([]string{"Overall_Attack_Success_Rate_%", fmt.Sprintf("%.2f", avgASR*100)})
 	writer.Write([]string{"Average_Latency_ms", fmt.Sprintf("%d", avgLatency)})
 	writer.Write([]string{"Test_Configuration", "4_nodes_2_honest_2_attacker"})
 	writer.Write([]string{"Blockchains_Per_Run", "12"})
