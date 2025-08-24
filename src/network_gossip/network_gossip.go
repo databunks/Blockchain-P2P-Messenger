@@ -750,35 +750,21 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 						for i, processingMsg := range gn.msgsToProcess {
 							if processingMsg.ID == messageID {
 								if processingMsg.AcksReceived >= gn.thresholdAcks {
-									// CRITICAL FIX: Check if this message can be saved (no earlier messages pending)
-									canSave := true
-									for _, otherMsg := range gn.msgsToProcess {
-										if otherMsg.ID != messageID && otherMsg.Timestamp < processingMsg.Timestamp {
-											// There's an earlier message still waiting for ACKs
-											canSave = false
-											break
-										}
-									}
+									// FIXED: Save message immediately when threshold is reached (no timestamp ordering requirement)
+									chatBlockData := fmt.Sprintf("CHAT_MSG{Sender: %s, Type: %s, Data: %s, Timestamp: %d, Signature: %s}",
+										processingMsg.PublicKey, processingMsg.Type, processingMsg.Data, processingMsg.Timestamp, processingMsg.Signature)
 
-									if canSave {
-										// Save to blockchain
-										chatBlockData := fmt.Sprintf("CHAT_MSG{Sender: %s, Type: %s, Data: %s, Timestamp: %d, Signature: %s}",
-											processingMsg.PublicKey, processingMsg.Type, processingMsg.Data, processingMsg.Timestamp, processingMsg.Signature)
-
-										if err := blockchain.AddBlock(chatBlockData, gn.roomID); err != nil {
-											fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
-										} else {
-											// Send blockchain data to stat collector
-											network.SendBlockchainToStatCollector(gn.roomID, 3002, gn.injectSpamMessages)
-										}
-
-										// Remove message from processing list
-										gn.msgsToProcess = append(gn.msgsToProcess[:i], gn.msgsToProcess[i+1:]...)
-										gn.gossipMutex.Unlock()
-										return
+									if err := blockchain.AddBlock(chatBlockData, gn.roomID); err != nil {
+										fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
 									} else {
-										fmt.Printf("⏳ Message %s waiting for earlier messages to be processed first\n", messageID[:8])
+										// Send blockchain data to stat collector
+										network.SendBlockchainToStatCollector(gn.roomID, 3002, gn.injectSpamMessages)
 									}
+
+									// Remove message from processing list
+									gn.msgsToProcess = append(gn.msgsToProcess[:i], gn.msgsToProcess[i+1:]...)
+									gn.gossipMutex.Unlock()
+									return
 								}
 								break
 							}
@@ -847,33 +833,19 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 
 							// Check if threshold is reached and save immediately
 							if gn.msgsToProcess[i].AcksReceived >= gn.thresholdAcks {
-								// CRITICAL FIX: Check if this message can be saved (no earlier messages pending)
-								canSave := true
-								for _, otherMsg := range gn.msgsToProcess {
-									if otherMsg.ID != gn.msgsToProcess[i].ID && otherMsg.Timestamp < gn.msgsToProcess[i].Timestamp {
-										// There's an earlier message still waiting for ACKs
-										canSave = false
-										break
-									}
-								}
+								// FIXED: Save message immediately when threshold is reached (no timestamp ordering requirement)
+								chatBlockData := fmt.Sprintf("CHAT_MSG{Sender: %s, Type: %s, Data: %s, Timestamp: %d, Signature: %s}",
+									processingMsg.PublicKey, processingMsg.Type, processingMsg.Data, processingMsg.Timestamp, processingMsg.Signature)
 
-								if canSave {
-									// Save to blockchain
-									chatBlockData := fmt.Sprintf("CHAT_MSG{Sender: %s, Type: %s, Data: %s, Timestamp: %d, Signature: %s}",
-										processingMsg.PublicKey, processingMsg.Type, processingMsg.Data, processingMsg.Timestamp, processingMsg.Signature)
-
-									if err := blockchain.AddBlock(chatBlockData, msg.RoomID); err != nil {
-										fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
-									} else {
-										// Send blockchain data to statCollector
-										network.SendBlockchainToStatCollector(msg.RoomID, 3002, gn.injectSpamMessages)
-									}
-
-									// Remove from processing list
-									gn.msgsToProcess = append(gn.msgsToProcess[:i], gn.msgsToProcess[i+1:]...)
+								if err := blockchain.AddBlock(chatBlockData, msg.RoomID); err != nil {
+									fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
 								} else {
-									fmt.Printf("⏳ Message %s waiting for earlier messages to be processed first\n", gn.msgsToProcess[i].ID[:8])
+									// Send blockchain data to statCollector
+									network.SendBlockchainToStatCollector(msg.RoomID, 3002, gn.injectSpamMessages)
 								}
+
+								// Remove from processing list
+								gn.msgsToProcess = append(gn.msgsToProcess[:i], gn.msgsToProcess[i+1:]...)
 							}
 							found = true
 							break
