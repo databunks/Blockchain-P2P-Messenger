@@ -371,17 +371,17 @@ func assessConsensusIntegrity() float64 {
 	}
 
 	// For consensus integrity, we just need to compare final block hashes
-	// Since we're now storing just hashes, this is much simpler
-	fmt.Printf("   🔍 Collecting final hashes from all available nodes...\n")
+	// Let's collect all available blockchains and compare their final hashes
+	fmt.Printf("   🔍 Collecting final block hashes from all available blockchains...\n")
 
 	blockchainHashes := make([]string, 0)
-	for nodeID, hashes := range nodeBlockchains {
-		if len(hashes) > 0 {
-			// Now we store just the hash directly, no need to extract
-			finalHash := hashes[0]
+	for nodeID, blockchains := range nodeBlockchains {
+		if len(blockchains) > 0 {
+			blockchainStr := blockchains[0]
+			finalHash := extractFinalBlockHash(blockchainStr)
 			if finalHash != "" {
 				blockchainHashes = append(blockchainHashes, finalHash)
-				fmt.Printf("   🔑 Hash from %s: %s...\n", nodeID[:16]+"...", finalHash[:16])
+				fmt.Printf("   🔑 Blockchain from %s: Final hash = %s...\n", nodeID[:16]+"...", finalHash[:16])
 			}
 		}
 	}
@@ -663,16 +663,8 @@ func handleConnection(conn net.Conn) {
 		err = json.Unmarshal(buffer[:n], &blockchainMsg)
 		if err == nil {
 			// Check if this is a blockchain message
-			if msgType, exists := blockchainMsg["type"]; exists {
-				switch msgType {
-				case "final_hash":
-					handleFinalHashMessage(blockchainMsg)
-				case "blockchain_data":
-					handleBlockchainMessage(blockchainMsg)
-				default:
-					// Fall back to string message handling
-					handleStringMessage(string(buffer[:n]))
-				}
+			if msgType, exists := blockchainMsg["type"]; exists && msgType == "blockchain_data" {
+				handleBlockchainMessage(blockchainMsg)
 			} else {
 				// Fall back to string message handling
 				handleStringMessage(string(buffer[:n]))
@@ -696,46 +688,7 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
-// handleFinalHashMessage processes final hash messages (much more efficient)
-func handleFinalHashMessage(hashMsg map[string]interface{}) {
-	// Extract hash and sender information
-	var hash string
-	var sender string
-	var roomID string
-
-	if h, exists := hashMsg["hash"]; exists {
-		hash = fmt.Sprintf("%v", h)
-	}
-
-	if s, exists := hashMsg["sender"]; exists {
-		sender = fmt.Sprintf("%v", s)
-	}
-
-	if r, exists := hashMsg["room_id"]; exists {
-		roomID = fmt.Sprintf("%v", r)
-	}
-
-	fmt.Printf("🔗 FINAL HASH RECEIVED [Run %d] 🔗\n", currentRun)
-	fmt.Printf("📅 Time: %s\n", time.Now().Format("15:04:05.000"))
-	fmt.Printf("🏠 Room: %s\n", roomID)
-	fmt.Printf("🔑 Hash: %s...\n", hash[:16])
-	fmt.Printf("👤 Sender: %s...\n", sender[:16])
-
-	// Check for spam detection (if hash contains spam indicators)
-	if strings.Contains(hash, "SPAM_HASH") {
-		fmt.Printf("🚨 SPAM DETECTED! Hash contains spam indicator: %s...\n", hash[:32])
-	}
-
-	// Store hash for consensus analysis
-	fmt.Printf("🔗 Storing final hash for consensus analysis...\n")
-	storeFinalHashForConsensus(hashMsg)
-	fmt.Printf("✅ Final hash stored successfully\n")
-
-	// Process for consensus testing
-	processMessageForConsensus(hash, sender)
-}
-
-// handleBlockchainMessage processes blockchain data messages (legacy support)
+// handleBlockchainMessage processes blockchain data messages
 func handleBlockchainMessage(blockchainMsg map[string]interface{}) {
 	// Extract blockchain data for logging (only data is used for spam detection)
 	// var roomID string
@@ -779,7 +732,7 @@ func handleBlockchainMessage(blockchainMsg map[string]interface{}) {
 	// fmt.Printf("⏱️  Run Time: %s\n", time.Since(runStartTime).Round(time.Millisecond))
 	// fmt.Println("🔗 END BLOCKCHAIN DATA 🔗")
 
-	// Check for spam messages and log them (legacy support for blockchain_data messages)
+	// Check for spam messages and log them
 	if dataStr, ok := data.(string); ok {
 		spamCount := strings.Count(dataStr, "SPAM_MSG{")
 		if spamCount > 0 {
@@ -799,37 +752,7 @@ func handleBlockchainMessage(blockchainMsg map[string]interface{}) {
 	processMessageForConsensus("blockchain_message", "blockchain_node")
 }
 
-// storeFinalHashForConsensus stores final hash data for consensus analysis (much more efficient)
-func storeFinalHashForConsensus(hashMsg map[string]interface{}) {
-	// Extract hash and sender information
-	var hash string
-	var sender string
-
-	if h, exists := hashMsg["hash"]; exists {
-		hash = fmt.Sprintf("%v", h)
-	}
-
-	if s, exists := hashMsg["sender"]; exists {
-		sender = fmt.Sprintf("%v", s)
-	}
-
-	if hash == "" || sender == "" {
-		fmt.Printf("❌ ERROR: Missing hash or sender in final hash message\n")
-		return
-	}
-
-	// Generate unique node ID for this sender
-	nodeID := fmt.Sprintf("node_%d_%d", time.Now().UnixNano(), rand.Int63n(10000))
-
-	// Store the final hash (much simpler than storing entire blockchain)
-	nodeBlockchainsMutex.Lock()
-	nodeBlockchains[nodeID] = []string{hash} // Store just the hash
-	nodeBlockchainsMutex.Unlock()
-
-	fmt.Printf("🔗 Stored final hash for node %s: %s...\n", nodeID[:16], hash[:16])
-}
-
-// storeBlockchainForConsensus stores blockchain data for consensus analysis (legacy support)
+// storeBlockchainForConsensus stores blockchain data for consensus analysis
 func storeBlockchainForConsensus(blockchainMsg map[string]interface{}) {
 	// Protect concurrent access to nodeBlockchains
 	nodeBlockchainsMutex.Lock()
