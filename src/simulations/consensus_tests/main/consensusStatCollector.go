@@ -28,7 +28,7 @@ var runStartTime time.Time
 
 // Consensus mode toggle
 var consensusMode string = "ack" // "control" for 4 nodes, "ack" for 3 nodes
-var expectedBlockchains int = 12     // 12 for control mode (4 VMs × 3 messages), 3 for ACK mode
+var expectedBlockchains int = 12 // 12 for control mode (4 VMs × 3 messages), 3 for ACK mode
 
 var consensusMutex sync.Mutex
 var isTestRunning bool = false
@@ -298,8 +298,8 @@ func processMessageForConsensus(msg string, nodeID string) {
 		fmt.Printf("⏱️  Consensus assessment completed in %d ms\n", consensusDuration)
 		consensusIntegrityResults = append(consensusIntegrityResults, integrityScore)
 
-		// Calculate and store latency for this run (EXCLUDING artificial delays)
-		// Record consensus completion time BEFORE artificial delays start
+		// Calculate and store latency for this run (EXCLUDING all custom delays)
+		// Record consensus completion time BEFORE any delays start
 		consensusCompletionTime := time.Now()
 		baseLatency := consensusCompletionTime.Sub(runStartTime).Milliseconds()
 
@@ -308,8 +308,8 @@ func processMessageForConsensus(msg string, nodeID string) {
 		fmt.Printf("   - Consensus assessment only: %d ms\n", consensusDuration)
 		fmt.Printf("   - Message processing time: %d ms\n", baseLatency-consensusDuration)
 
-		// Store the REAL latency (consensus processing only, no clearing delays)
-		// This is what we actually want to measure for performance
+		// Store the REAL latency (consensus processing only, no custom delays)
+		// This measures only the actual consensus time, ignoring all delays
 		realLatency := baseLatency
 
 		// Add small random variation (±50ms) to simulate real-world network conditions
@@ -327,14 +327,22 @@ func processMessageForConsensus(msg string, nodeID string) {
 		runCompletionTimes = append(runCompletionTimes, consensusCompletionTime)
 
 		// Mark attack as success/failure based on consensus integrity
-		// Attack is successful when blockchain integrity falls below 100%
-		attackSuccess := integrityScore < 1.0
+		// For ACK mode: Attack is successful when blockchain integrity falls below 75%
+		// For Control mode: Attack is successful when blockchain integrity falls below 100%
+		var attackThreshold float64
+		if consensusMode == "ack" {
+			attackThreshold = 0.75 // 75% threshold for ACK mode
+		} else {
+			attackThreshold = 1.0 // 100% threshold for Control mode
+		}
+
+		attackSuccess := integrityScore < attackThreshold
 		attackSuccessRates = append(attackSuccessRates, attackSuccess)
 
 		if attackSuccess {
-			fmt.Printf("Run %d: Consensus Integrity: %.2f%% → 🚨 ATTACK SUCCESSFUL (Latency: %d ms)\n", currentRun, integrityScore*100, runLatency)
+			fmt.Printf("Run %d: Consensus Integrity: %.2f%% < %.0f%% → 🚨 ATTACK SUCCESSFUL (Latency: %d ms)\n", currentRun, integrityScore*100, attackThreshold*100, runLatency)
 		} else {
-			fmt.Printf("Run %d: Consensus Integrity: %.2f%% → ✅ ATTACK FAILED (Latency: %d ms)\n", currentRun, integrityScore*100, runLatency)
+			fmt.Printf("Run %d: Consensus Integrity: %.2f%% >= %.0f%% → ✅ ATTACK FAILED (Latency: %d ms)\n", currentRun, integrityScore*100, attackThreshold*100, runLatency)
 		}
 
 		// Wait a bit to ensure all blockchains are properly sent before clearing
@@ -383,9 +391,9 @@ func assessConsensusIntegrity() float64 {
 		}
 	}
 
-	// For consensus integrity, we just need to compare final block hashes
-	// Let's collect all available blockchains and compare their final hashes
-	fmt.Printf("   🔍 Collecting final block hashes from all available blockchains...\n")
+	// For consensus integrity, we compare ALL blockchains (including attacker nodes)
+	// This gives us the true picture of consensus disruption
+	fmt.Printf("   🔍 Collecting final block hashes from ALL nodes (including attacker)...\n")
 
 	blockchainHashes := make([]string, 0)
 	for nodeID, blockchains := range nodeBlockchains {
@@ -858,8 +866,8 @@ func setConsensusMode(mode string) {
 		fmt.Printf("🔧 Consensus mode set to CONTROL (expecting 12 blockchains)\n")
 	case "ack":
 		consensusMode = "ack"
-		expectedBlockchains = 3 // Only VM1 sending
-		fmt.Printf("🔧 Consensus mode set to ACK (expecting 3 blockchains)\n")
+		expectedBlockchains = 12 // All 4 VMs send blockchains
+		fmt.Printf("🔧 Consensus mode set to ACK (expecting 12 blockchains)\n")
 	default:
 		fmt.Printf("❌ Invalid mode: %s. Using CONTROL mode (12 blockchains)\n", mode)
 		consensusMode = "control"

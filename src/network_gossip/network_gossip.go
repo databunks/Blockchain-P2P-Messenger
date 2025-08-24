@@ -113,7 +113,7 @@ type GossipNetwork struct {
 
 }
 
-var nodes []*consensus.Server
+// var nodes []*consensus.Server
 
 var peerIDs []uint64
 
@@ -361,9 +361,9 @@ func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool, to
 		nodeIDs = append(nodeIDs, uint64(i))
 	}
 
-	if gossipNet.blockChainState {
-		nodes = consensus.InitializeConsensus(len(nodeIDs), nodeIDs)
-	}
+	// if gossipNet.blockChainState {
+	// 	nodes = consensus.InitializeConsensus(len(nodeIDs), nodeIDs)
+	// }
 
 	// Start the integrated network
 	gossipNet.Start()
