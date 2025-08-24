@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -168,51 +169,57 @@ func clearBlockchain() error {
 
 	fmt.Printf("VM1: 🧹 Clearing blockchain for room: %s\n", globalRoomID)
 
-	// Overwrite with minimal blockchain instead of deleting to avoid race conditions
-	// This preserves genesis block and peer setup while removing chat messages
-	minimalBlockchain := `[
-  {
-    "index": 0,
-    "timestamp": "2025-08-24T00:00:00Z",
-    "data": "Genesis Block",
-    "hash": "0000000000000000000000000000000000000000000000000000000000000000",
-    "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000"
-  },
-  {
-    "index": 1,
-    "timestamp": "2025-08-24T00:00:00Z",
-    "data": "PEER_ADDED$[{\"PublicKey\":\"0000005ed266dc58d687b6ed84af4b4657162033cf379e9d8299bba941ae66e0\",\"IP\":\"219:84b6:648e:9ca5:e124:49ed:42d2:e6a3\",\"IsAttacker\":false}]",
-    "hash": "peer_block_1_hash",
-    "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000"
-  },
-  {
-    "index": 2,
-    "timestamp": "2025-08-24T00:00:00Z",
-    "data": "PEER_ADDED$[{\"PublicKey\":\"927c78b7fa731c2b2f642a1de2fb3318f70bbb142465a75a8802a90e1a526285\",\"IP\":\"200:db07:e90:b19:c7a9:a137:abc4:3a09\",\"IsAttacker\":false}]",
-    "hash": "peer_block_2_hash",
-    "prev_hash": "peer_block_1_hash"
-  },
-  {
-    "index": 3,
-    "timestamp": "2025-08-24T00:00:00Z",
-    "data": "PEER_ADDED$[{\"PublicKey\":\"9356e1f92f5adff2ab05115d54aff4b8c756d604704b5ddd71ff320f2d5aeecb\",\"IP\":\"200:d952:3c0d:a14a:401a:a9f5:dd45:56a0\",\"IsAttacker\":false}]",
-    "hash": "peer_block_3_hash",
-    "prev_hash": "peer_block_2_hash"
-  },
-  {
-    "index": 4,
-    "timestamp": "2025-08-24T00:00:00Z",
-    "data": "PEER_ADDED$[{\"PublicKey\":\"0000040cd8e7f870ff1146e03589b988d82aedb6464c5085a9aba945e60c4fcd\",\"IP\":\"215:fcc9:c601:e3c0:3bae:47f2:9d91:9dc9\",\"IsAttacker\":false}]",
-    "hash": "peer_block_4_hash",
-    "prev_hash": "peer_block_3_hash"
-  }
-]`
-
-	err := os.WriteFile(blockchainPath, []byte(minimalBlockchain), 0644)
+	// Read the current blockchain to preserve genesis and peer blocks
+	blockchainData, err := os.ReadFile(blockchainPath)
 	if err != nil {
-		return fmt.Errorf("failed to overwrite blockchain file: %v", err)
+		return fmt.Errorf("failed to read blockchain file: %v", err)
 	}
 
-	fmt.Printf("VM1: ✅ Blockchain overwritten with minimal structure (genesis + peers)\n")
+	// Parse the blockchain to find and keep only genesis and peer blocks
+	var blockchain []map[string]interface{}
+	if err := json.Unmarshal(blockchainData, &blockchain); err != nil {
+		return fmt.Errorf("failed to parse blockchain: %v", err)
+	}
+
+	fmt.Printf("VM1: 📖 Read blockchain data: %d total blocks\n", len(blockchain))
+
+	// Find the last peer block (look for PEER_ADDED in reverse order)
+	var preservedBlocks []map[string]interface{}
+	lastPeerIndex := -1
+
+	for i := len(blockchain) - 1; i >= 0; i-- {
+		block := blockchain[i]
+		if data, exists := block["data"]; exists {
+			if dataStr, ok := data.(string); ok && strings.Contains(dataStr, "PEER_ADDED") {
+				lastPeerIndex = i
+				break
+			}
+		}
+	}
+
+	// Preserve blocks from index 0 to lastPeerIndex (genesis + all peers)
+	if lastPeerIndex >= 0 {
+		preservedBlocks = blockchain[:lastPeerIndex+1]
+		fmt.Printf("VM1: 💾 Preserving %d blocks (genesis + peers up to index %d)\n", len(preservedBlocks), lastPeerIndex)
+	} else {
+		// If no peer blocks found, just keep genesis
+		preservedBlocks = blockchain[:1]
+		fmt.Printf("VM1: 💾 Preserving %d blocks (genesis only)\n", len(preservedBlocks))
+	}
+
+	// Write back the preserved blocks
+	preservedData, err := json.MarshalIndent(preservedBlocks, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal preserved blocks: %v", err)
+	}
+
+	fmt.Printf("VM1: 📝 Writing preserved blockchain: %d bytes\n", len(preservedData))
+
+	err = os.WriteFile(blockchainPath, preservedData, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write preserved blockchain: %v", err)
+	}
+
+	fmt.Printf("VM1: ✅ Blockchain cleared - kept genesis and peer blocks, removed chat messages\n")
 	return nil
 }
