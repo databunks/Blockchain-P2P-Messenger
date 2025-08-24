@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 )
 
@@ -15,17 +14,17 @@ type Block struct {
 	Index     int    `json:"index"`
 	Timestamp string `json:"timestamp"`
 	Data      string `json:"data"`
-	PrevHash  string `json:"prev_hash"`
 	Hash      string `json:"hash"`
+	PrevHash  string `json:"prev_hash"`
 }
 
-var (
-	blockchains      = make(map[string][]Block)
-	blockchainsMutex sync.RWMutex
-)
+var blockchains = make(map[string][]Block) // roomID -> []Block
 
 func init() {
-	blockchains = make(map[string][]Block)
+	// Create data directory if it doesn't exist
+	if err := os.MkdirAll("src/main/data", 0755); err != nil {
+		panic(err)
+	}
 }
 
 // CalculateHash is a simple SHA256 hashing function
@@ -74,8 +73,8 @@ func IsBlockValid(newBlock, oldBlock Block) bool {
 
 // ReplaceChain replaces the current chain with a new one if the new one is longer
 func ReplaceChain(newBlocks []Block, roomID string) error {
-	// Small delay to prevent race condition
-	time.Sleep(50 * time.Millisecond)
+	// Load blockchain if not in memory
+	LoadBlockchainFromFile(roomID)
 
 	if len(newBlocks) > len(blockchains[roomID]) {
 		blockchains[roomID] = newBlocks
@@ -117,63 +116,71 @@ func GenerateGenesisBlock() Block {
 
 // LoadBlockchainFromFile loads the blockchain from a file
 func LoadBlockchainFromFile(roomID string) error {
-	// Small delay to prevent race condition
-	time.Sleep(50 * time.Millisecond)
-
-	// Lock for writing to prevent concurrent map access
-	blockchainsMutex.Lock()
-	defer blockchainsMutex.Unlock()
+	// Check if blockchain already exists in memory
+	if _, exists := blockchains[roomID]; exists {
+		return nil // Already loaded
+	}
 
 	roomDir := filepath.Join("src/main/data", roomID)
 	if err := os.MkdirAll(roomDir, 0755); err != nil {
 		return err
 	}
 
-	file, err := os.Open(filepath.Join(roomDir, "blockchain.json"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			// Initialize with genesis block if file doesn't exist
-			genesisBlock := GenerateGenesisBlock()
-			blockchains[roomID] = []Block{genesisBlock}
-			return SaveBlockchainToFile(roomID)
+	filePath := filepath.Join(roomDir, "blockchain.json")
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		// Create genesis block if file doesn't exist
+		genesisBlock := Block{
+			Index:     0,
+			Timestamp: "Genesis Block",
+			Data:      "Genesis Block",
+			Hash:      "",
+			PrevHash:  "",
 		}
-		return err
+		genesisBlock.Hash = CalculateHash(genesisBlock)
+		blockchains[roomID] = []Block{genesisBlock}
+		return SaveBlockchainToFile(roomID)
 	}
-	defer file.Close()
 
-	var blocks []Block
-	if err := json.NewDecoder(file).Decode(&blocks); err != nil {
+	// Read existing blockchain
+	file, err := os.ReadFile(filePath)
+	if err != nil {
 		return err
 	}
-	blockchains[roomID] = blocks
+
+	var chain []Block
+	if err := json.Unmarshal(file, &chain); err != nil {
+		return err
+	}
+
+	blockchains[roomID] = chain
 	return nil
 }
 
 // AddBlock adds a new block with the given data to the blockchain
 func AddBlock(data string, roomID string) error {
-	// Small delay to prevent race condition
-	time.Sleep(50 * time.Millisecond)
-
+	// Load blockchain if not in memory
 	if err := LoadBlockchainFromFile(roomID); err != nil {
 		return err
 	}
 
-	lastBlock := blockchains[roomID][len(blockchains[roomID])-1]
+	// Get current blockchain
+	chain := blockchains[roomID]
+
+	lastBlock := chain[len(chain)-1]
 	newBlock, err := GenerateBlock(lastBlock, data)
 	if err != nil {
 		return err
 	}
 
-	blockchains[roomID] = append(blockchains[roomID], newBlock)
+	blockchains[roomID] = append(chain, newBlock)
 	return SaveBlockchainToFile(roomID)
 }
 
 // GetBlockchain returns the blockchain for a specific room
 func GetBlockchain(roomID string) []Block {
-	// Small delay to prevent race condition
-	time.Sleep(50 * time.Millisecond)
-
+	// Load blockchain if not in memory
 	LoadBlockchainFromFile(roomID)
+
 	if chain, exists := blockchains[roomID]; exists {
 		return chain
 	}
