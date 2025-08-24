@@ -240,15 +240,15 @@ func processMessageForConsensus(msg string, nodeID string) {
 	// Increment message count for current run
 	messagesThisRun++
 
-	// Safely truncate nodeID for display (avoid slice bounds error)
-	var displayID string
-	if len(nodeID) >= 16 {
-		displayID = nodeID[:16] + "..."
-	} else {
-		displayID = nodeID
-	}
+	// Safely truncate nodeID for display (avoid slice bounds error) - commented out for cleaner output
+	// var displayID string
+	// if len(nodeID) >= 16 {
+	// 	displayID = nodeID[:16] + "..."
+	// } else {
+	// 	displayID = nodeID
+	// }
 
-	fmt.Printf("Run %d: Blockchain %d/12 received from %s\n", currentRun, messagesThisRun, displayID)
+	// fmt.Printf("Run %d: Blockchain %d/12 received from %s\n", currentRun, messagesThisRun, displayID)
 
 	// Check if run is complete
 	if messagesThisRun >= 12 {
@@ -407,13 +407,33 @@ func compareBlockchains(blockchain1, blockchain2 string) bool {
 	return true
 }
 
-// extractBlocksFromBlockchain extracts individual blocks from blockchain string
+// extractBlocksFromBlockchain extracts individual blocks from blockchain string in correct order
 func extractBlocksFromBlockchain(blockchainStr string) []string {
 	var blocks []string
 
-	// Split by "CHAT_MSG{" to find chat message blocks
-	parts := strings.Split(blockchainStr, "CHAT_MSG{")
-	for i, part := range parts {
+	// Try to parse as JSON first to get proper ordering
+	var blockchainData []map[string]interface{}
+	if err := json.Unmarshal([]byte(blockchainStr), &blockchainData); err == nil {
+		// Successfully parsed as JSON, extract blocks in index order
+		for _, block := range blockchainData {
+			if data, exists := block["data"]; exists {
+				if dataStr, ok := data.(string); ok {
+					// Check if it's a message block (not genesis or peer blocks)
+					if strings.HasPrefix(dataStr, "CHAT_MSG{") || strings.HasPrefix(dataStr, "SPAM_MSG{") {
+						blocks = append(blocks, dataStr)
+					}
+				}
+			}
+		}
+		return blocks
+	}
+
+	// Fallback: if JSON parsing fails, use string splitting (less accurate)
+	fmt.Printf("   ⚠️  JSON parsing failed, using fallback string splitting\n")
+
+	// Extract CHAT_MSG blocks
+	chatParts := strings.Split(blockchainStr, "CHAT_MSG{")
+	for i, part := range chatParts {
 		if i == 0 {
 			continue // Skip first part (before first CHAT_MSG)
 		}
@@ -421,6 +441,20 @@ func extractBlocksFromBlockchain(blockchainStr string) []string {
 		// Find the closing brace
 		if endIndex := strings.Index(part, "}"); endIndex != -1 {
 			block := "CHAT_MSG{" + part[:endIndex] + "}"
+			blocks = append(blocks, block)
+		}
+	}
+
+	// Extract SPAM_MSG blocks
+	spamParts := strings.Split(blockchainStr, "SPAM_MSG{")
+	for i, part := range spamParts {
+		if i == 0 {
+			continue // Skip first part (before first SPAM_MSG)
+		}
+
+		// Find the closing brace
+		if endIndex := strings.Index(part, "}"); endIndex != -1 {
+			block := "SPAM_MSG{" + part[:endIndex] + "}"
 			blocks = append(blocks, block)
 		}
 	}
@@ -442,13 +476,14 @@ func compareBlock(block1, block2 string) bool {
 func extractBlockContent(block string) string {
 	// Remove timestamp and signature from comparison
 	// Format: CHAT_MSG{Sender: X, Type: Y, Data: Z, Timestamp: T, Signature: S}
+	// Format: SPAM_MSG{Attacker: X, Data: Y, Timestamp: T, Hash: H, Signature: S}
 
 	// Find the start of the block
-	if !strings.HasPrefix(block, "CHAT_MSG{") {
-		return block // Return as-is if not a chat message
+	if !strings.HasPrefix(block, "CHAT_MSG{") && !strings.HasPrefix(block, "SPAM_MSG{") {
+		return block // Return as-is if not a recognized message type
 	}
 
-	// Extract the content between CHAT_MSG{ and the first Timestamp
+	// Extract the content between the message type and the first Timestamp
 	parts := strings.Split(block, "Timestamp:")
 	if len(parts) < 2 {
 		return block // Return as-is if can't parse
@@ -576,47 +611,56 @@ func handleConnection(conn net.Conn) {
 
 // handleBlockchainMessage processes blockchain data messages
 func handleBlockchainMessage(blockchainMsg map[string]interface{}) {
-	// Extract blockchain data for logging
-	var roomID string
-	var timestamp interface{}
+	// Extract blockchain data for logging (only data is used for spam detection)
+	// var roomID string
+	// var timestamp interface{}
 	var data interface{}
 
-	if r, exists := blockchainMsg["room_id"]; exists {
-		roomID = fmt.Sprintf("%v", r)
-	}
+	// if r, exists := blockchainMsg["room_id"]; exists {
+	// 	roomID = fmt.Sprintf("%v", r)
+	// }
 
-	if ts, exists := blockchainMsg["timestamp"]; exists {
-		timestamp = ts
-	}
+	// if ts, exists := blockchainMsg["timestamp"]; exists {
+	// 	timestamp = ts
+	// }
 
 	if d, exists := blockchainMsg["data"]; exists {
 		data = d
 	}
 
-	// Enhanced logging for blockchain reception
-	fmt.Printf("\n🔗 BLOCKCHAIN RECEIVED [Run %d] 🔗\n", currentRun)
-	fmt.Printf("📅 Time: %s\n", time.Now().Format("15:04:05.000"))
-	fmt.Printf("🏠 Room: %s\n", roomID)
-	fmt.Printf("⏰ Timestamp: %v\n", timestamp)
+	// Enhanced logging for blockchain reception (commented out for cleaner output)
+	// fmt.Printf("\n🔗 BLOCKCHAIN RECEIVED [Run %d] 🔗\n", currentRun)
+	// fmt.Printf("📅 Time: %s\n", time.Now().Format("15:04:05.000"))
+	// fmt.Printf("🏠 Room: %s\n", roomID)
+	// fmt.Printf("⏰ Timestamp: %v\n", timestamp)
 
-	// Log blockchain content summary
+	// Log blockchain content summary (commented out for cleaner output)
+	// if dataStr, ok := data.(string); ok {
+	// 	// Count the number of blocks in the blockchain
+	// 	blockCount := strings.Count(dataStr, "CHAT_MSG{")
+	// 	fmt.Printf("📊 Blockchain Blocks: %d\n", blockCount)
+
+	// 	// Show first and last few characters of blockchain data
+	// 	if len(dataStr) > 100 {
+	// 	// 	fmt.Printf("📄 Data Preview: %s...%s\n", dataStr[:50], dataStr[len(dataStr)-50:])
+	// 	// } else {
+	// 	// 	fmt.Printf("📄 Data: %s\n", dataStr)
+	// 	// }
+	// }
+
+	// Log progress towards run completion (commented out for cleaner output)
+	// fmt.Printf("📈 Progress: %d/12 blockchains received\n", messagesThisRun+1)
+	// fmt.Printf("⏱️  Run Time: %s\n", time.Since(runStartTime).Round(time.Millisecond))
+	// fmt.Println("🔗 END BLOCKCHAIN DATA 🔗")
+
+	// Check for spam messages and log them
 	if dataStr, ok := data.(string); ok {
-		// Count the number of blocks in the blockchain
-		blockCount := strings.Count(dataStr, "CHAT_MSG{")
-		fmt.Printf("📊 Blockchain Blocks: %d\n", blockCount)
-
-		// Show first and last few characters of blockchain data
-		if len(dataStr) > 100 {
-			fmt.Printf("📄 Data Preview: %s...%s\n", dataStr[:50], dataStr[len(dataStr)-50:])
-		} else {
-			fmt.Printf("📄 Data: %s\n", dataStr)
+		spamCount := strings.Count(dataStr, "SPAM_MSG{")
+		if spamCount > 0 {
+			fmt.Printf("🚨 SPAM DETECTED! Found %d spam messages in blockchain\n", spamCount)
+			fmt.Printf("🚨 Spam content: %s\n", dataStr)
 		}
 	}
-
-	// Log progress towards run completion
-	fmt.Printf("📈 Progress: %d/12 blockchains received\n", messagesThisRun+1)
-	fmt.Printf("⏱️  Run Time: %s\n", time.Since(runStartTime).Round(time.Millisecond))
-	fmt.Println("🔗 END BLOCKCHAIN DATA 🔗")
 
 	// Store blockchain data for consensus analysis
 	storeBlockchainForConsensus(blockchainMsg)
@@ -652,7 +696,7 @@ func storeBlockchainForConsensus(blockchainMsg map[string]interface{}) {
 	blockchainData := fmt.Sprintf("%v", blockchainMsg["data"])
 	nodeBlockchains[nodeID] = append(nodeBlockchains[nodeID], blockchainData)
 
-	fmt.Printf("💾 Stored blockchain for node %s (total: %d)\n", nodeID, len(nodeBlockchains[nodeID]))
+	// fmt.Printf("💾 Stored blockchain for node %s (total: %d)\n", nodeID, len(nodeBlockchains[nodeID]))
 }
 
 // sendStartGossipingCommand sends a command to VM1 to start gossiping messages

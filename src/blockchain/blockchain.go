@@ -28,8 +28,11 @@ func init() {
 }
 
 // CalculateHash is a simple SHA256 hashing function
+// Note: Timestamp is excluded from hash calculation to ensure identical messages
+// generate identical hashes regardless of when they're processed
 func CalculateHash(block Block) string {
-	record := string(block.Index) + block.Timestamp + block.Data + block.PrevHash
+	// Exclude timestamp from hash calculation for consensus consistency
+	record := string(block.Index) + block.Data + block.PrevHash
 	h := sha256.New()
 	h.Write([]byte(record))
 	hashed := h.Sum(nil)
