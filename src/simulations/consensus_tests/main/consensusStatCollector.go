@@ -67,14 +67,15 @@ func main() {
 func initializeConsensusTest() {
 	// Define attacker nodes
 	attackerNodes = []string{
-		"927c78b7fa731c2b2f642a1de2fb3318f70bbb142465a75a8802a90e1a526285", // VM2
-		"9356e1f92f5adff2ab05115d54aff4b8c756d604704b5ddd71ff320f2d5aeecb", // VM3
+
+		"0000040cd8e7f870ff1146e03589b988d82aedb6464c5085a9aba945e60c4fcd",
 	}
 
 	// Define honest nodes
 	honestNodes = []string{
-		"0000005ed266dc58d687b6ed84af4b4657162033cf379e9d8299bba941ae66e0", // VM1
-		"0000040cd8e7f870ff1146e03589b988d82aedb6464c5085a9aba945e60c4fcd", // VM4
+		"0000005ed266dc58d687b6ed84af4b4657162033cf379e9d8299bba941ae66e0",
+		"927c78b7fa731c2b2f642a1de2fb3318f70bbb142465a75a8802a90e1a526285",
+		"9356e1f92f5adff2ab05115d54aff4b8c756d604704b5ddd71ff320f2d5aeecb",
 	}
 
 	// Initialize tracking maps
@@ -384,34 +385,50 @@ func handleConnection(conn net.Conn) {
 
 // handleBlockchainMessage processes blockchain data messages
 func handleBlockchainMessage(blockchainMsg map[string]interface{}) {
-	fmt.Println("=== BLOCKCHAIN DATA RECEIVED ===")
+	// Extract blockchain data for logging
+	var roomID string
+	var timestamp interface{}
+	var data interface{}
 
-	if roomID, exists := blockchainMsg["room_id"]; exists {
-		fmt.Printf("Room ID: %v\n", roomID)
+	if r, exists := blockchainMsg["room_id"]; exists {
+		roomID = fmt.Sprintf("%v", r)
 	}
 
-	if timestamp, exists := blockchainMsg["timestamp"]; exists {
-		fmt.Printf("Timestamp: %v\n", timestamp)
+	if ts, exists := blockchainMsg["timestamp"]; exists {
+		timestamp = ts
 	}
 
-	if data, exists := blockchainMsg["data"]; exists {
-		fmt.Printf("Blockchain Data:\n%s\n", data)
+	if d, exists := blockchainMsg["data"]; exists {
+		data = d
+	}
 
-		// Parse the blockchain JSON data
-		var blockchainData interface{}
-		err := json.Unmarshal([]byte(data.(string)), &blockchainData)
-		if err != nil {
-			fmt.Printf("Error parsing blockchain JSON: %v\n", err)
+	// Enhanced logging for blockchain reception
+	fmt.Printf("\n🔗 BLOCKCHAIN RECEIVED [Run %d] 🔗\n", currentRun)
+	fmt.Printf("📅 Time: %s\n", time.Now().Format("15:04:05.000"))
+	fmt.Printf("🏠 Room: %s\n", roomID)
+	fmt.Printf("⏰ Timestamp: %v\n", timestamp)
+
+	// Log blockchain content summary
+	if dataStr, ok := data.(string); ok {
+		// Count the number of blocks in the blockchain
+		blockCount := strings.Count(dataStr, "CHAT_MSG{")
+		fmt.Printf("📊 Blockchain Blocks: %d\n", blockCount)
+
+		// Show first and last few characters of blockchain data
+		if len(dataStr) > 100 {
+			fmt.Printf("📄 Data Preview: %s...%s\n", dataStr[:50], dataStr[len(dataStr)-50:])
 		} else {
-			fmt.Printf("Successfully parsed blockchain data\n")
-			// You can add more specific blockchain analysis here
+			fmt.Printf("📄 Data: %s\n", dataStr)
 		}
 	}
 
+	// Log progress towards run completion
+	fmt.Printf("📈 Progress: %d/12 blockchains received\n", messagesThisRun+1)
+	fmt.Printf("⏱️  Run Time: %s\n", time.Since(runStartTime).Round(time.Millisecond))
+	fmt.Println("🔗 END BLOCKCHAIN DATA 🔗")
+
 	// Process for consensus testing
 	processMessageForConsensus("blockchain_message", "blockchain_node")
-
-	fmt.Println("=== END BLOCKCHAIN DATA ===")
 }
 
 // handleStringMessage processes legacy string messages
