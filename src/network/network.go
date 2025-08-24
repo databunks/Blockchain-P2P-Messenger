@@ -566,7 +566,7 @@ func SendBlockchainToStatCollector(roomID string, port int) {
 	var statCollectorPublicKey string = "0000005ed266dc58d687b6ed84af4b4657162033cf379e9d8299bba941ae66e0"
 
 	// Read blockchain data from file
-	blockchainFilePath := fmt.Sprintf("../data/%s/blockchain.json", roomID)
+	blockchainFilePath := fmt.Sprintf("data/%s/blockchain.json", roomID)
 	blockchainData, err := os.ReadFile(blockchainFilePath)
 	if err != nil {
 		log.Printf("Error reading blockchain file %s: %v\n", blockchainFilePath, err)
