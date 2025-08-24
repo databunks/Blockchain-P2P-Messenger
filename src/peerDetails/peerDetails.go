@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type Peer struct {
@@ -15,11 +16,7 @@ type Peer struct {
 	IsAdmin   bool   `json:"isadmin"`
 }
 
-var peers map[string][]Peer // roomID -> []Peer
-
-func init() {
-	peers = make(map[string][]Peer)
-}
+var peers sync.Map // roomID -> []Peer (thread-safe)
 
 // AddPeer adds a new peer to a specific room
 func AddPeer(publicKey string, ip string, isAdmin bool, roomID string) error {
@@ -32,20 +29,21 @@ func AddPeer(publicKey string, ip string, isAdmin bool, roomID string) error {
 	}
 
 	// Get Previous Peers
-	peers[roomID] = GetPeersInRoom(roomID)
+	previousPeers := GetPeersInRoom(roomID)
 
 	// Add to memory
-	peers[roomID] = append(peers[roomID], peer)
-	fmt.Printf("Added peer to memory. Current peers: %+v\n", peers[roomID])
+	newPeers := append(previousPeers, peer)
+	peers.Store(roomID, newPeers)
+	fmt.Printf("Added peer to memory. Current peers: %+v\n", newPeers)
 
 	peerList := "["
-	for i := 0; i < len(peers[roomID]); i++ {
+	for i := 0; i < len(newPeers); i++ {
 		peerList += "{"
-		peerList += peers[roomID][i].PublicKey
-		peerList += " " + peers[roomID][i].IP
-		peerList += " " + fmt.Sprintf("%v", peers[roomID][i].IsAdmin)
+		peerList += newPeers[i].PublicKey
+		peerList += " " + newPeers[i].IP
+		peerList += " " + fmt.Sprintf("%v", newPeers[i].IsAdmin)
 		peerList += "}"
-		if i != len(peers[roomID])-1 {
+		if i != len(newPeers)-1 {
 			peerList += ", "
 		}
 	}
@@ -86,14 +84,14 @@ func GetPeersInRoom(roomID string) []Peer {
 			}
 
 			// Update in-memory cache and return the peer list
-			peers[roomID] = roomPeers
+			peers.Store(roomID, roomPeers)
 			return roomPeers
 		}
 	}
 
 	// No peers found in blockchain for this room
-	peers[roomID] = []Peer{}
-	return peers[roomID]
+	peers.Store(roomID, []Peer{})
+	return []Peer{}
 }
 
 // RemovePeer removes a peer by public key from a specific room
@@ -119,7 +117,7 @@ func RemovePeer(publicKey string, roomID string) error {
 	}
 
 	// Update memory
-	peers[roomID] = newPeerList
+	peers.Store(roomID, newPeerList)
 	fmt.Printf("Updated peer list after removal: %+v\n", newPeerList)
 
 	// Save new peer list to blockchain
