@@ -178,12 +178,12 @@ func executeGossipSequence(runNumber int) {
 	// Message 1
 	globalGossipNet.GossipMessage("chat", "broadcast", fmt.Sprintf("Consensus Test Message 1 (Run %d)", runNumber), 1, globalRoomID, "")
 	fmt.Println("VM1: Sent message 1")
-	//time.Sleep(time.Second * 1)
+	time.Sleep(time.Second * 1)
 
 	// Message 2
 	globalGossipNet.GossipMessage("chat", "broadcast", fmt.Sprintf("Consensus Test Message 2 (Run %d)", runNumber), 1, globalRoomID, "")
 	fmt.Println("VM1: Sent message 2")
-	//time.Sleep(time.Second * 1)
+	time.Sleep(time.Second * 1)
 
 	// Message 3
 	globalGossipNet.GossipMessage("chat", "broadcast", fmt.Sprintf("Consensus Test Message 3 (Run %d)", runNumber), 1, globalRoomID, "")

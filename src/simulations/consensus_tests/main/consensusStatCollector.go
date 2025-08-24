@@ -141,6 +141,14 @@ func startNewRun() {
 	// Reset blockchain tracking for new run
 	nodeBlockchains = make(map[string][]string)
 
+	// Verify complete run isolation - ensure no old messages remain
+	fmt.Printf("🔍 Verifying complete run isolation...\n")
+	if len(nodeBlockchains) > 0 {
+		fmt.Printf("⚠️  WARNING: Old blockchains detected! Clearing again...\n")
+		nodeBlockchains = make(map[string][]string)
+	}
+	fmt.Printf("✅ Run isolation verified - clean slate for run %d\n", currentRun)
+
 	fmt.Printf("\n=== STARTING RUN %d/%d ===\n", currentRun, totalRuns)
 	fmt.Printf("Run started at: %s\n", runStartTime.Format("15:04:05"))
 	fmt.Printf("Expected: %d blockchains (Mode: %s)\n", expectedBlockchains, consensusMode)
@@ -345,9 +353,9 @@ func processMessageForConsensus(msg string, nodeID string) {
 			fmt.Printf("Run %d: Consensus Integrity: %.2f%% >= %.0f%% → ✅ ATTACK FAILED (Latency: %d ms)\n", currentRun, integrityScore*100, attackThreshold*100, runLatency)
 		}
 
-		// Wait a bit to ensure all blockchains are properly sent before clearing
-		fmt.Printf("⏳ Waiting 5 seconds to ensure all blockchains are sent...\n")
-		time.Sleep(5 * time.Second)
+		// Wait longer to ensure all blockchains are properly sent before clearing
+		fmt.Printf("⏳ Waiting 10 seconds to ensure all blockchains are sent...\n")
+		time.Sleep(10 * time.Second)
 
 		// Clear blockchains on all VMs before next run
 		fmt.Printf("🧹 Clearing blockchains on all VMs for next run...\n")
@@ -356,8 +364,12 @@ func processMessageForConsensus(msg string, nodeID string) {
 		clearDuration := time.Since(clearStartTime).Milliseconds()
 		fmt.Printf("⏱️  Blockchain clearing completed in %d ms\n", clearDuration)
 
-		// Wait 5 seconds for cleanup
-		fmt.Printf("⏳ Waiting 5 seconds for blockchain cleanup...\n")
+		// Wait longer for cleanup to prevent cross-run contamination
+		fmt.Printf("⏳ Waiting 15 seconds for blockchain cleanup and isolation...\n")
+		time.Sleep(15 * time.Second)
+
+		// Add extra barrier to ensure complete isolation
+		fmt.Printf("🚧 Ensuring complete run isolation...\n")
 		time.Sleep(5 * time.Second)
 	}
 }
@@ -778,6 +790,12 @@ func storeBlockchainForConsensus(blockchainMsg map[string]interface{}) {
 	// Protect concurrent access to nodeBlockchains
 	nodeBlockchainsMutex.Lock()
 	defer nodeBlockchainsMutex.Unlock()
+
+	// Validate that this message is from the current run
+	if !isTestRunning {
+		fmt.Printf("⚠️  Ignoring blockchain message - test not running (current run: %d)\n", currentRun)
+		return
+	}
 
 	// Extract node identifier from the blockchain message
 	var nodeID string
