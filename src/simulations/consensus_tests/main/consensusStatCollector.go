@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
 	"net"
 	"os"
 	"regexp"
@@ -25,6 +24,7 @@ var currentRun int = 0
 var totalRuns int = 100
 var messagesThisRun int = 0
 var runStartTime time.Time
+var consensusStartTime time.Time // Time when first blockchain is received (consensus starts)
 
 // Consensus mode toggle
 var consensusMode string = "ack" // "control" for 4 nodes, "ack" for 3 nodes
@@ -133,7 +133,7 @@ func startNewRun() {
 	messagesMutex.Lock()
 	messagesThisRun = 0
 	messagesMutex.Unlock()
-	runStartTime = time.Now()
+	consensusStartTime = time.Time{} // Reset consensus start time for new run
 	testRunningMutex.Lock()
 	isTestRunning = true
 	testRunningMutex.Unlock()
@@ -150,9 +150,12 @@ func startNewRun() {
 	fmt.Printf("✅ Run isolation verified - clean slate for run %d\n", currentRun)
 
 	fmt.Printf("\n=== STARTING RUN %d/%d ===\n", currentRun, totalRuns)
-	fmt.Printf("Run started at: %s\n", runStartTime.Format("15:04:05"))
 	fmt.Printf("Expected: %d blockchains (Mode: %s)\n", expectedBlockchains, consensusMode)
 	fmt.Println("Sending start gossiping command to VM1...")
+
+	// Set run start time RIGHT BEFORE sending command to VM1
+	runStartTime = time.Now()
+	fmt.Printf("Run started at: %s\n", runStartTime.Format("15:04:05"))
 
 	// Send start gossiping command to VM1
 	sendStartGossipingCommand()
@@ -296,38 +299,41 @@ func processMessageForConsensus(msg string, nodeID string) {
 		testRunningMutex.Lock()
 		isTestRunning = false
 		testRunningMutex.Unlock()
+
+		// Record the EXACT time when all blockchains are received (before any processing)
+		allBlockchainsReceivedTime := time.Now()
+
 		fmt.Printf("Run %d: All %d blockchains received, assessing consensus integrity...\n", currentRun, expectedBlockchains)
 
 		// Assess consensus integrity for this run
 		fmt.Printf("⏱️  Starting consensus assessment...\n")
-		consensusStartTime := time.Now()
+		consensusAssessmentStart := time.Now()
 		integrityScore := assessConsensusIntegrity()
-		consensusDuration := time.Since(consensusStartTime).Milliseconds()
+		consensusDuration := time.Since(consensusAssessmentStart).Milliseconds()
 		fmt.Printf("⏱️  Consensus assessment completed in %d ms\n", consensusDuration)
 		consensusIntegrityResults = append(consensusIntegrityResults, integrityScore)
 
 		// Calculate and store latency for this run (EXCLUDING all custom delays)
 		// Record consensus completion time BEFORE any delays start
 		consensusCompletionTime := time.Now()
-		baseLatency := consensusCompletionTime.Sub(runStartTime).Milliseconds()
+
+		// Calculate COMPLETE GOSSIP SEQUENCE latency (from command sent to VM1 to all blockchains received)
+		// This measures the total time for the gossip protocol to complete
+		totalLatency := allBlockchainsReceivedTime.Sub(runStartTime).Milliseconds()
+
+		// DEBUG: Show exact timestamps for debugging
+		fmt.Printf("🔍 DEBUG TIMESTAMPS:\n")
+		fmt.Printf("   - runStartTime: %s\n", runStartTime.Format("15:04:05.000"))
+		fmt.Printf("   - allBlockchainsReceivedTime: %s\n", allBlockchainsReceivedTime.Format("15:04:05.000"))
+		fmt.Printf("   - Time difference: %d ms\n", totalLatency)
 
 		fmt.Printf("⏱️  TIMING BREAKDOWN:\n")
-		fmt.Printf("   - Run start to consensus completion: %d ms\n", baseLatency)
+		fmt.Printf("   - Complete gossip sequence: %d ms (command → all blockchains)\n", totalLatency)
 		fmt.Printf("   - Consensus assessment only: %d ms\n", consensusDuration)
-		fmt.Printf("   - Message processing time: %d ms\n", baseLatency-consensusDuration)
+		fmt.Printf("   - Message propagation time: %d ms\n", totalLatency)
 
-		// Store the REAL latency (consensus processing only, no custom delays)
-		// This measures only the actual consensus time, ignoring all delays
-		realLatency := baseLatency
-
-		// Add small random variation (±50ms) to simulate real-world network conditions
-		randomVariation := rand.Int63n(101) - 50 // -50 to +50 ms
-		runLatency := realLatency + randomVariation
-
-		// Ensure latency doesn't go negative
-		if runLatency < 0 {
-			runLatency = 0
-		}
+		// Store the COMPLETE GOSSIP SEQUENCE latency
+		runLatency := totalLatency
 
 		totalLatencies = append(totalLatencies, runLatency)
 
@@ -824,6 +830,18 @@ func storeBlockchainForConsensus(blockchainMsg map[string]interface{}) {
 	// Convert blockchain data to string for storage
 	blockchainData := fmt.Sprintf("%v", blockchainMsg["data"])
 	nodeBlockchains[nodeID] = append(nodeBlockchains[nodeID], blockchainData)
+
+	// Set consensus start time when first blockchain is received
+	// Count total blockchains across all nodes
+	totalBlockchains := 0
+	for _, blockchains := range nodeBlockchains {
+		totalBlockchains += len(blockchains)
+	}
+
+	if totalBlockchains == 1 {
+		consensusStartTime = time.Now()
+		fmt.Printf("⏱️  Consensus started at: %s (first blockchain received)\n", consensusStartTime.Format("15:04:05.000"))
+	}
 
 	// fmt.Printf("💾 Stored blockchain for node %s (total: %d)\n", nodeID, len(nodeBlockchains[nodeID]))
 }
