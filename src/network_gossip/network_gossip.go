@@ -734,12 +734,12 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 			// Start goroutine to wait for acks with timeout
 			go func(messageID string) {
 				// Wait a bit for pending acks to be processed first
-				time.Sleep(500 * time.Millisecond)
+				time.Sleep(1 * time.Second)
 
 				timer := time.NewTimer(30 * time.Second) // Increased from 15 to 30 seconds
 				defer timer.Stop()
 
-				ticker := time.NewTicker(500 * time.Millisecond)
+				ticker := time.NewTicker(1 * time.Second)
 				defer ticker.Stop()
 
 				for {
