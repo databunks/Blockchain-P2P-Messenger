@@ -74,7 +74,7 @@ func IsBlockValid(newBlock, oldBlock Block) bool {
 // ReplaceChain replaces the current chain with a new one if the new one is longer
 func ReplaceChain(newBlocks []Block, roomID string) error {
 	// Small delay to prevent race condition
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 
 	if len(newBlocks) > len(blockchains[roomID]) {
 		blockchains[roomID] = newBlocks
@@ -117,7 +117,7 @@ func GenerateGenesisBlock() Block {
 // LoadBlockchainFromFile loads the blockchain from a file
 func LoadBlockchainFromFile(roomID string) error {
 	// Small delay to prevent race condition
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 
 	roomDir := filepath.Join(dataDir, roomID)
 	if err := os.MkdirAll(roomDir, 0755); err != nil {
@@ -147,7 +147,7 @@ func LoadBlockchainFromFile(roomID string) error {
 // AddBlock adds a new block with the given data to the blockchain
 func AddBlock(data string, roomID string) error {
 	// Small delay to prevent race condition
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 
 	if err := LoadBlockchainFromFile(roomID); err != nil {
 		return err
@@ -166,7 +166,7 @@ func AddBlock(data string, roomID string) error {
 // GetBlockchain returns the blockchain for a specific room
 func GetBlockchain(roomID string) []Block {
 	// Small delay to prevent race condition
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 
 	LoadBlockchainFromFile(roomID)
 	if chain, exists := blockchains[roomID]; exists {
