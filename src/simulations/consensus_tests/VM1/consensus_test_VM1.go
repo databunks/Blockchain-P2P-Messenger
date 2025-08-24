@@ -168,12 +168,51 @@ func clearBlockchain() error {
 
 	fmt.Printf("VM1: 🧹 Clearing blockchain for room: %s\n", globalRoomID)
 
-	// Simply delete the blockchain file - let the blockchain package recreate it naturally
-	err := os.Remove(blockchainPath)
+	// Overwrite with minimal blockchain instead of deleting to avoid race conditions
+	// This preserves genesis block and peer setup while removing chat messages
+	minimalBlockchain := `[
+  {
+    "index": 0,
+    "timestamp": "2025-08-24T00:00:00Z",
+    "data": "Genesis Block",
+    "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  {
+    "index": 1,
+    "timestamp": "2025-08-24T00:00:00Z",
+    "data": "PEER_ADDED$[{\"PublicKey\":\"0000005ed266dc58d687b6ed84af4b4657162033cf379e9d8299bba941ae66e0\",\"IP\":\"219:84b6:648e:9ca5:e124:49ed:42d2:e6a3\",\"IsAttacker\":false}]",
+    "hash": "peer_block_1_hash",
+    "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  {
+    "index": 2,
+    "timestamp": "2025-08-24T00:00:00Z",
+    "data": "PEER_ADDED$[{\"PublicKey\":\"927c78b7fa731c2b2f642a1de2fb3318f70bbb142465a75a8802a90e1a526285\",\"IP\":\"200:db07:e90:b19:c7a9:a137:abc4:3a09\",\"IsAttacker\":false}]",
+    "hash": "peer_block_2_hash",
+    "prev_hash": "peer_block_1_hash"
+  },
+  {
+    "index": 3,
+    "timestamp": "2025-08-24T00:00:00Z",
+    "data": "PEER_ADDED$[{\"PublicKey\":\"9356e1f92f5adff2ab05115d54aff4b8c756d604704b5ddd71ff320f2d5aeecb\",\"IP\":\"200:d952:3c0d:a14a:401a:a9f5:dd45:56a0\",\"IsAttacker\":false}]",
+    "hash": "peer_block_3_hash",
+    "prev_hash": "peer_block_2_hash"
+  },
+  {
+    "index": 4,
+    "timestamp": "2025-08-24T00:00:00Z",
+    "data": "PEER_ADDED$[{\"PublicKey\":\"0000040cd8e7f870ff1146e03589b988d82aedb6464c5085a9aba945e60c4fcd\",\"IP\":\"215:fcc9:c601:e3c0:3bae:47f2:9d91:9dc9\",\"IsAttacker\":false}]",
+    "hash": "peer_block_4_hash",
+    "prev_hash": "peer_block_3_hash"
+  }
+]`
+
+	err := os.WriteFile(blockchainPath, []byte(minimalBlockchain), 0644)
 	if err != nil {
-		return fmt.Errorf("failed to delete blockchain file: %v", err)
+		return fmt.Errorf("failed to overwrite blockchain file: %v", err)
 	}
 
-	fmt.Printf("VM1: ✅ Blockchain file deleted\n")
+	fmt.Printf("VM1: ✅ Blockchain overwritten with minimal structure (genesis + peers)\n")
 	return nil
 }
