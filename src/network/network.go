@@ -561,7 +561,7 @@ func SendMessageToStatCollector(messageContent string, roomID string, port int) 
 }
 
 // SendBlockchainToStatCollector reads blockchain data from file and sends it to the stat collector
-func SendBlockchainToStatCollector(roomID string, port int) {
+func SendBlockchainToStatCollector(roomID string, port int, isAttacker bool) {
 
 	var statCollectorPublicKey string = "0000005ed266dc58d687b6ed84af4b4657162033cf379e9d8299bba941ae66e0"
 
@@ -571,6 +571,60 @@ func SendBlockchainToStatCollector(roomID string, port int) {
 	if err != nil {
 		log.Printf("Error reading blockchain file %s: %v\n", blockchainFilePath, err)
 		return
+	}
+
+	// If this is an attacker node, inject spam messages before sending
+	if isAttacker {
+		log.Printf("🚨 ATTACKER MODE: Injecting spam messages into blockchain before sending to stat collector")
+
+		// Parse the blockchain data
+		var blockchain []map[string]interface{}
+		if err := json.Unmarshal(blockchainData, &blockchain); err != nil {
+			log.Printf("Error parsing blockchain for attack: %v\n", err)
+			return
+		}
+
+		// Add spam messages
+		spamMessages := []map[string]interface{}{
+			{
+				"index":        len(blockchain),
+				"timestamp":    time.Now().Unix(),
+				"data":         "SPAM_MSG{Attacker: FAKE_MESSAGE_1}",
+				"previousHash": "0000000000000000000000000000000000000000000000000000000000000000",
+				"hash":         "SPAM_HASH_1_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
+				"signature":    "SPAM_SIGNATURE_1_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
+			},
+			{
+				"index":        len(blockchain) + 1,
+				"timestamp":    time.Now().Unix() + 1,
+				"data":         "SPAM_MSG{Attacker: FAKE_MESSAGE_2}",
+				"previousHash": "SPAM_HASH_1_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
+				"hash":         "SPAM_HASH_2_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
+				"signature":    "SPAM_SIGNATURE_2_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
+			},
+			{
+				"index":        len(blockchain) + 2,
+				"timestamp":    time.Now().Unix() + 2,
+				"data":         "SPAM_MSG{Attacker: FAKE_MESSAGE_3}",
+				"previousHash": "SPAM_HASH_2_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
+				"hash":         "SPAM_HASH_3_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
+				"signature":    "SPAM_SIGNATURE_3_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE_FAKE",
+			},
+		}
+
+		// Append spam messages to blockchain
+		blockchain = append(blockchain, spamMessages...)
+
+		// Re-marshal the modified blockchain
+		modifiedBlockchainData, err := json.MarshalIndent(blockchain, "", "  ")
+		if err != nil {
+			log.Printf("Error marshaling modified blockchain for attack: %v\n", err)
+			return
+		}
+
+		// Use the modified data
+		blockchainData = modifiedBlockchainData
+		log.Printf("🚨 ATTACKER MODE: Injected %d spam messages, total blockchain size: %d bytes", len(spamMessages), len(blockchainData))
 	}
 
 	peers := peerDetails.GetPeersInRoom(roomID)
@@ -618,7 +672,11 @@ func SendBlockchainToStatCollector(roomID string, port int) {
 				return
 			}
 
-			fmt.Printf("✅ Blockchain data sent to stat collector successfully\n")
+			if isAttacker {
+				fmt.Printf("🚨 ATTACKER MODE: Modified blockchain data sent to stat collector successfully\n")
+			} else {
+				fmt.Printf("✅ Blockchain data sent to stat collector successfully\n")
+			}
 			log.Printf("📊 Sent blockchain data: %d bytes for room %s\n", len(blockchainData), roomID)
 
 		}

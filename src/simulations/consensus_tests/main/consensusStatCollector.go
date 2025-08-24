@@ -20,7 +20,7 @@ var timestamp_arrived []uint64
 
 // Consensus testing variables
 var currentRun int = 0
-var totalRuns int = 2
+var totalRuns int = 50
 var messagesThisRun int = 0
 var runStartTime time.Time
 var consensusMutex sync.Mutex
@@ -285,20 +285,188 @@ func assessConsensusIntegrity() float64 {
 		return 0.0
 	}
 
-	// Count honest nodes with consistent blockchain state
+	// Count honest nodes with blockchain data
 	consistentNodes := 0
 	totalHonestNodes := len(honestNodes)
 
-	// For now, we'll use a simplified assessment
-	// In a real implementation, you'd compare actual blockchain contents
-	for _, honestNode := range honestNodes {
-		if blockchains, exists := nodeBlockchains[honestNode]; exists && len(blockchains) == 3 {
-			consistentNodes++
+	// Check if honest nodes have blockchain data and compare their contents
+	for i, honestNode := range honestNodes {
+		fmt.Printf("   🔍 Checking honest node: %s...\n", honestNode[:16]+"...")
+
+		// Map honest node to the corresponding generic node ID
+		genericNodeID := fmt.Sprintf("node_%d", i)
+		fmt.Printf("   🔍 Looking for blockchain under: %s\n", genericNodeID)
+
+		if blockchains, exists := nodeBlockchains[genericNodeID]; exists && len(blockchains) > 0 {
+			fmt.Printf("   ✅ Found %d blockchain(s) for honest node\n", len(blockchains))
+
+			// Get the first blockchain from this node
+			nodeBlockchain := blockchains[0]
+
+			// Compare with other honest nodes' blockchains
+			isConsistent := true
+			for j, otherHonestNode := range honestNodes {
+				if i == j {
+					continue // Skip self-comparison
+				}
+
+				// Map other honest node to its generic ID
+				otherGenericNodeID := fmt.Sprintf("node_%d", j)
+				fmt.Printf("   🔍 Comparing with honest node: %s (generic ID: %s)...\n", otherHonestNode[:16]+"...", otherGenericNodeID)
+
+				if otherBlockchains, otherExists := nodeBlockchains[otherGenericNodeID]; otherExists && len(otherBlockchains) > 0 {
+					fmt.Printf("   ✅ Found %d blockchain(s) for comparison node\n", len(otherBlockchains))
+
+					otherBlockchain := otherBlockchains[0]
+
+					// Compare blockchain contents
+					if !compareBlockchains(nodeBlockchain, otherBlockchain) {
+						fmt.Printf("   ❌ Blockchain comparison failed\n")
+						isConsistent = false
+						break
+					} else {
+						fmt.Printf("   ✅ Blockchain comparison succeeded\n")
+					}
+				} else {
+					fmt.Printf("   ❌ No blockchain data found for comparison node\n")
+					isConsistent = false
+					break
+				}
+			}
+
+			if isConsistent {
+				consistentNodes++
+				fmt.Printf("   ✅ Node marked as consistent\n")
+			} else {
+				fmt.Printf("   ❌ Node marked as inconsistent\n")
+			}
+		} else {
+			fmt.Printf("   ❌ No blockchain data found for honest node\n")
 		}
 	}
 
 	integrity := float64(consistentNodes) / float64(totalHonestNodes)
+
+	// Debug logging
+	fmt.Printf("🔍 Consensus Integrity Debug:\n")
+	fmt.Printf("   - Total honest nodes: %d\n", totalHonestNodes)
+	fmt.Printf("   - Nodes with blockchain data: %d\n", consistentNodes)
+	fmt.Printf("   - Integrity score: %.2f%%\n", integrity*100)
+
+	// Show the mapping between honest nodes and generic IDs
+	fmt.Printf("   - Honest node to generic ID mapping:\n")
+	for i, honestNode := range honestNodes {
+		genericID := fmt.Sprintf("node_%d", i)
+		fmt.Printf("     * %s... -> %s\n", honestNode[:16], genericID)
+	}
+
+	// Log what's in nodeBlockchains
+	fmt.Printf("   - nodeBlockchains contents:\n")
+	for nodeID, blockchains := range nodeBlockchains {
+		fmt.Printf("     * %s: %d blockchains\n", nodeID, len(blockchains))
+		if len(blockchains) > 0 {
+			// Show a preview of the first blockchain
+			firstBlock := blockchains[0]
+			if len(firstBlock) > 100 {
+				fmt.Printf("       Preview: %s...\n", firstBlock[:100])
+			} else {
+				fmt.Printf("       Preview: %s\n", firstBlock)
+			}
+		}
+	}
+
 	return integrity
+}
+
+// compareBlockchains compares two blockchain strings for consistency
+func compareBlockchains(blockchain1, blockchain2 string) bool {
+	// Parse blockchain data to extract actual block content
+	blocks1 := extractBlocksFromBlockchain(blockchain1)
+	blocks2 := extractBlocksFromBlockchain(blockchain2)
+
+	// Compare number of blocks
+	if len(blocks1) != len(blocks2) {
+		fmt.Printf("   🔍 Block count mismatch: %d vs %d\n", len(blocks1), len(blocks2))
+		return false
+	}
+
+	// Compare each block
+	for i, block1 := range blocks1 {
+		if i >= len(blocks2) {
+			fmt.Printf("   🔍 Block %d missing in second blockchain\n", i)
+			return false
+		}
+
+		block2 := blocks2[i]
+		if !compareBlock(block1, block2) {
+			fmt.Printf("   🔍 Block %d content mismatch\n", i)
+			return false
+		}
+	}
+
+	return true
+}
+
+// extractBlocksFromBlockchain extracts individual blocks from blockchain string
+func extractBlocksFromBlockchain(blockchainStr string) []string {
+	var blocks []string
+
+	// Split by "CHAT_MSG{" to find chat message blocks
+	parts := strings.Split(blockchainStr, "CHAT_MSG{")
+	for i, part := range parts {
+		if i == 0 {
+			continue // Skip first part (before first CHAT_MSG)
+		}
+
+		// Find the closing brace
+		if endIndex := strings.Index(part, "}"); endIndex != -1 {
+			block := "CHAT_MSG{" + part[:endIndex] + "}"
+			blocks = append(blocks, block)
+		}
+	}
+
+	return blocks
+}
+
+// compareBlock compares two individual blocks, ignoring variable fields like timestamps
+func compareBlock(block1, block2 string) bool {
+	// Parse the block content to extract only essential fields
+	content1 := extractBlockContent(block1)
+	content2 := extractBlockContent(block2)
+
+	// Compare only the essential content (sender, type, data)
+	return content1 == content2
+}
+
+// extractBlockContent extracts only the essential content from a block, ignoring timestamps/signatures
+func extractBlockContent(block string) string {
+	// Remove timestamp and signature from comparison
+	// Format: CHAT_MSG{Sender: X, Type: Y, Data: Z, Timestamp: T, Signature: S}
+
+	// Find the start of the block
+	if !strings.HasPrefix(block, "CHAT_MSG{") {
+		return block // Return as-is if not a chat message
+	}
+
+	// Extract the content between CHAT_MSG{ and the first Timestamp
+	parts := strings.Split(block, "Timestamp:")
+	if len(parts) < 2 {
+		return block // Return as-is if can't parse
+	}
+
+	// Take everything before "Timestamp:" and add closing brace
+	essentialContent := parts[0] + "}"
+
+	// Also remove any Signature field if present
+	if strings.Contains(essentialContent, "Signature:") {
+		sigParts := strings.Split(essentialContent, "Signature:")
+		if len(sigParts) >= 2 {
+			// Remove everything after "Signature:" and add closing brace
+			essentialContent = sigParts[0] + "}"
+		}
+	}
+
+	return essentialContent
 }
 
 // calculateAttackSuccessRate measures the success rate of attacker attacks
@@ -311,10 +479,9 @@ func calculateAttackSuccessRate() float64 {
 	successfulAttacks := 0
 	totalAttackerNodes := len(attackerNodes)
 
-	// For now, we'll use a simplified calculation
-	// In a real implementation, you'd analyze actual attack impact
+	// Check if attacker nodes have blockchain data (indicating successful participation)
 	for _, attackerNode := range attackerNodes {
-		if blockchains, exists := nodeBlockchains[attackerNode]; exists && len(blockchains) == 3 {
+		if blockchains, exists := nodeBlockchains[attackerNode]; exists && len(blockchains) > 0 {
 			successfulAttacks++
 		}
 	}
@@ -451,8 +618,41 @@ func handleBlockchainMessage(blockchainMsg map[string]interface{}) {
 	fmt.Printf("⏱️  Run Time: %s\n", time.Since(runStartTime).Round(time.Millisecond))
 	fmt.Println("🔗 END BLOCKCHAIN DATA 🔗")
 
+	// Store blockchain data for consensus analysis
+	storeBlockchainForConsensus(blockchainMsg)
+
 	// Process for consensus testing
 	processMessageForConsensus("blockchain_message", "blockchain_node")
+}
+
+// storeBlockchainForConsensus stores blockchain data for consensus analysis
+func storeBlockchainForConsensus(blockchainMsg map[string]interface{}) {
+	// Extract node identifier from the blockchain message
+	var nodeID string
+
+	// Try to extract sender information
+	if sender, exists := blockchainMsg["sender"]; exists {
+		nodeID = fmt.Sprintf("%v", sender)
+	} else if publicKey, exists := blockchainMsg["public_key"]; exists {
+		// Use public key as fallback identifier
+		pubKeyStr := fmt.Sprintf("%v", publicKey)
+		// Store under the full public key for proper lookup
+		nodeID = pubKeyStr
+	} else {
+		// Generate a unique identifier for this blockchain
+		nodeID = fmt.Sprintf("node_%d", messagesThisRun)
+	}
+
+	// Store blockchain data for this node
+	if nodeBlockchains[nodeID] == nil {
+		nodeBlockchains[nodeID] = make([]string, 0)
+	}
+
+	// Convert blockchain data to string for storage
+	blockchainData := fmt.Sprintf("%v", blockchainMsg["data"])
+	nodeBlockchains[nodeID] = append(nodeBlockchains[nodeID], blockchainData)
+
+	fmt.Printf("💾 Stored blockchain for node %s (total: %d)\n", nodeID, len(nodeBlockchains[nodeID]))
 }
 
 // sendStartGossipingCommand sends a command to VM1 to start gossiping messages

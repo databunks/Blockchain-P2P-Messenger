@@ -23,6 +23,9 @@ func RunConsensusTestControlVM2() {
 	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), false, roomID)
 	peerDetails.AddPeer(publicKey4_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey4_VM4), false, roomID)
 
-	gossipnetwork.InitializeGossipNetwork(roomID, 3000, false, true, true)
+	// Set this to true to enable attacker mode (injects spam messages)
+	attackerMode := true
+
+	gossipnetwork.InitializeGossipNetwork(roomID, 3000, attackerMode, true, true)
 
 }

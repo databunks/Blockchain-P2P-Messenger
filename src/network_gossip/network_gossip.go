@@ -672,7 +672,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 				fmt.Printf("✅ Message directly saved to blockchain (ID: %s)\n", msg.ID)
 				// Send blockchain data to stat collector
 				fmt.Printf("📤 Sending blockchain to stat collector...\n")
-				network.SendBlockchainToStatCollector(msg.RoomID, 3002)
+				network.SendBlockchainToStatCollector(msg.RoomID, 3002, gn.isAttackerNode)
 			}
 		} else if gn.blockChainState {
 			// Send acknowledgment only when not in direct mode
@@ -756,7 +756,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 										fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
 									} else {
 										// Send blockchain data to stat collector
-										network.SendBlockchainToStatCollector(gn.roomID, 3002)
+										network.SendBlockchainToStatCollector(gn.roomID, 3002, gn.isAttackerNode)
 									}
 
 									// Remove message from processing list
@@ -839,7 +839,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 									fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
 								} else {
 									// Send blockchain data to stat collector
-									network.SendBlockchainToStatCollector(msg.RoomID, 3002)
+									network.SendBlockchainToStatCollector(msg.RoomID, 3002, gn.isAttackerNode)
 								}
 
 								// Remove from processing list
