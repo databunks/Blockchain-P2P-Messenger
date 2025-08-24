@@ -652,6 +652,132 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 	// Handle different message types
 	switch msg.Type {
 	case "chat":
+		// Handle chat messages
+		fmt.Printf("📨 Processing chat message: %s\n", msg.Data)
+
+		// Check if direct blockchain saving is enabled
+		if gn.noAckBlockchainSave && gn.blockChainState {
+			// Directly save to blockchain without waiting for acks
+			chatBlockData := fmt.Sprintf("CHAT_MSG{Sender: %s, Type: %s, Data: %s, Timestamp: %d, Signature: %s}",
+				msg.PublicKey, msg.Type, msg.Data, msg.Timestamp, msg.Signature)
+
+			if err := blockchain.AddBlock(chatBlockData, msg.RoomID); err != nil {
+				fmt.Printf("❌ Failed to save chat message to blockchain (direct mode): %v\n", err)
+			} else {
+				fmt.Printf("✅ Message directly saved to blockchain (ID: %s)\n", msg.ID)
+				// Send blockchain data to stat collector
+				fmt.Printf("📤 Sending blockchain to stat collector...\n")
+				network.SendBlockchainToStatCollector(msg.RoomID, 3002)
+			}
+		} else if gn.blockChainState {
+			// Send acknowledgment only when not in direct mode
+			senderID, _ := strconv.ParseUint(msg.Sender, 10, 64)
+			ackData := fmt.Sprintf("ACK for message %s from %s", msg.ID, msg.PublicKey)
+			gn.GossipMessage("ack", "broadcast", ackData, senderID, msg.RoomID, "")
+			gn.gossipMutex.Lock()
+			// Initialize acks received counter
+			msg.AcksReceived = 0
+
+			// Check if message is already being processed
+			alreadyProcessing := false
+			for _, existingMsg := range gn.msgsToProcess {
+				if existingMsg.ID == msg.ID {
+					alreadyProcessing = true
+					break
+				}
+			}
+
+			if alreadyProcessing {
+				gn.gossipMutex.Unlock()
+				return // Skip if already processing
+			}
+
+			// Check if we have pending acks for this message
+			if pendingAcks, exists := gn.pendingAcks[msg.ID]; exists {
+				// CRITICAL FIX: Clear processedAcks for this message so pending acks can be processed fresh
+				delete(gn.processedAcks, msg.ID)
+
+				for _, pendingAck := range pendingAcks {
+					// Process each pending ack
+					if gn.processedAcks[msg.ID] == nil {
+						gn.processedAcks[msg.ID] = make(map[string]bool)
+					}
+					if !gn.processedAcks[msg.ID][pendingAck.PublicKey] {
+						gn.processedAcks[msg.ID][pendingAck.PublicKey] = true
+						msg.AcksReceived++
+					}
+				}
+				// Clear pending acks for this message
+				delete(gn.pendingAcks, msg.ID)
+			}
+
+			// Add message to processing list
+			gn.msgsToProcess = append(gn.msgsToProcess, &msg)
+
+			// IMPORTANT: Update the message in msgsToProcess with the correct AcksReceived count
+			// Find the message we just added and update its AcksReceived
+			for i, processingMsg := range gn.msgsToProcess {
+				if processingMsg.ID == msg.ID {
+					gn.msgsToProcess[i].AcksReceived = msg.AcksReceived
+					break
+				}
+			}
+			gn.gossipMutex.Unlock()
+
+			// Start goroutine to wait for acks with timeout
+			go func(messageID string) {
+				// Wait a bit for pending acks to be processed first
+				time.Sleep(2 * time.Second)
+
+				timer := time.NewTimer(30 * time.Second) // Increased from 15 to 30 seconds
+				defer timer.Stop()
+
+				ticker := time.NewTicker(1 * time.Second)
+				defer ticker.Stop()
+
+				for {
+					select {
+					case <-ticker.C:
+						gn.gossipMutex.Lock()
+						// Find the message and check if it received enough acks
+						for i, processingMsg := range gn.msgsToProcess {
+							if processingMsg.ID == messageID {
+								if processingMsg.AcksReceived >= gn.thresholdAcks {
+									// Save to blockchain
+									chatBlockData := fmt.Sprintf("CHAT_MSG{Sender: %s, Type: %s, Data: %s, Timestamp: %d, Signature: %s}",
+										processingMsg.PublicKey, processingMsg.Type, processingMsg.Data, processingMsg.Timestamp, processingMsg.Signature)
+
+									if err := blockchain.AddBlock(chatBlockData, gn.roomID); err != nil {
+										fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
+									} else {
+										// Send blockchain data to stat collector
+										network.SendBlockchainToStatCollector(gn.roomID, 3002)
+									}
+
+									// Remove message from processing list
+									gn.msgsToProcess = append(gn.msgsToProcess[:i], gn.msgsToProcess[i+1:]...)
+									gn.gossipMutex.Unlock()
+									return
+								}
+								break
+							}
+						}
+						gn.gossipMutex.Unlock()
+					case <-timer.C:
+						// Timeout reached, remove message from processing list
+						gn.gossipMutex.Lock()
+						for i, processingMsg := range gn.msgsToProcess {
+							if processingMsg.ID == messageID {
+								gn.msgsToProcess = append(gn.msgsToProcess[:i], gn.msgsToProcess[i+1:]...)
+								break
+							}
+						}
+						gn.gossipMutex.Unlock()
+						return
+					}
+				}
+			}(msg.ID)
+		}
 	case "clear_blockchain":
 		// Handle clear blockchain command
 		fmt.Printf("Received clear blockchain command: %s\n", msg.Data)
