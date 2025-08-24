@@ -618,17 +618,7 @@ func SendBlockchainToStatCollector(roomID string, port int) {
 				return
 			}
 
-			// Read the response from the peer
-			buffer := make([]byte, 1024) // Buffer to store incoming data
-			n, err := conn.Read(buffer)
-			if err != nil {
-				log.Printf("Error reading response from %s: %v\n", peer.IP, err)
-				return
-			}
-
-			// Print the response received from the peer
-			response := string(buffer[:n])
-			fmt.Printf("Blockchain response from %s: %s\n", peer.IP, response)
+			fmt.Printf("✅ Blockchain data sent to stat collector successfully\n")
 
 		}
 	}

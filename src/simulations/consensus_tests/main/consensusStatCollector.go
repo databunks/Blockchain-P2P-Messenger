@@ -345,8 +345,8 @@ func handleConnection(conn net.Conn) {
 	for {
 		defer conn.Close()
 
-		// Read message sent by client
-		buffer := make([]byte, 1024)
+		// Read message sent by client - increased buffer size for blockchain data
+		buffer := make([]byte, 65536) // 64KB buffer for large blockchain data
 		n, err := conn.Read(buffer)
 		if err != nil {
 			fmt.Println("Error reading:", err)
