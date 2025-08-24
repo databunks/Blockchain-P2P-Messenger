@@ -105,9 +105,10 @@ type GossipNetwork struct {
 	pendingAcks   map[string][]GossipMessage // messageID -> []ack messages
 
 	// Consensus settings
-	thresholdAcks   int
-	blockChainState bool
-	isAttackerNode  bool
+	thresholdAcks       int
+	blockChainState     bool
+	isAttackerNode      bool
+	noAckBlockchainSave bool // When true, bypasses acknowledgment waiting and saves directly to blockchain
 }
 
 var nodes []*consensus.Server
@@ -121,26 +122,27 @@ func init() {
 }
 
 // NewGossipNetwork creates a new integrated gossip network
-func NewGossipNetwork(nodeID uint64, roomID string, port uint64, threshold int, blockchainEnabled bool, attackerMode bool) *GossipNetwork {
+func NewGossipNetwork(nodeID uint64, roomID string, port uint64, threshold int, blockchainEnabled bool, attackerMode bool, noAckBlockchainSave bool) *GossipNetwork {
 	// Load private key for authentication
 	privateKey, publicKey := loadKeys()
 
 	return &GossipNetwork{
-		nodeID:          nodeID,
-		roomID:          roomID,
-		port:            port,
-		gossipPeers:     make(map[uint64]*GossipNode),
-		messageHistory:  make(map[string]bool),
-		conns:           make(map[string]net.Conn),
-		privateKey:      privateKey,
-		publicKey:       publicKey,
-		disableAuth:     false, // Set to true to disable authentication
-		msgsToProcess:   make([]*GossipMessage, 0),
-		processedAcks:   make(map[string]map[string]bool),
-		pendingAcks:     make(map[string][]GossipMessage),
-		thresholdAcks:   threshold,
-		blockChainState: blockchainEnabled,
-		isAttackerNode:  attackerMode,
+		nodeID:              nodeID,
+		roomID:              roomID,
+		port:                port,
+		gossipPeers:         make(map[uint64]*GossipNode),
+		messageHistory:      make(map[string]bool),
+		conns:               make(map[string]net.Conn),
+		privateKey:          privateKey,
+		publicKey:           publicKey,
+		disableAuth:         false, // Set to true to disable authentication
+		msgsToProcess:       make([]*GossipMessage, 0),
+		processedAcks:       make(map[string]map[string]bool),
+		pendingAcks:         make(map[string][]GossipMessage),
+		thresholdAcks:       threshold,
+		blockChainState:     blockchainEnabled,
+		isAttackerNode:      attackerMode,
+		noAckBlockchainSave: noAckBlockchainSave,
 	}
 }
 
@@ -255,7 +257,13 @@ func (gn *GossipNetwork) authenticateMessage(msg GossipMessage, peer GossipNode)
 }
 
 // InitializeGossipNetwork sets up the complete gossip network
-func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool, toggleBlockchain bool) (*GossipNetwork, error) {
+// Parameters:
+//   - roomID: The room identifier for the gossip network
+//   - port: The port number for the network
+//   - toggleAttacker: Enable/disable attacker mode
+//   - toggleBlockchain: Enable/disable blockchain functionality
+//   - noAckBlockchainSave: When true, messages are saved directly to blockchain without waiting for acknowledgments
+func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool, toggleBlockchain bool, noAckBlockchainSave bool) (*GossipNetwork, error) {
 	peerCount := len(peerDetails.GetPeersInRoom(roomID))
 	calculatedThreshold := int(float64(peerCount) * 0.66) // 66% of peers
 	if calculatedThreshold < 2 {
@@ -266,7 +274,7 @@ func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool, to
 	fmt.Println(PublicKeyToID(GetYggdrasilNodeInfo().Key))
 
 	// Create gossip network instance
-	gossipNet := NewGossipNetwork(PublicKeyToID(GetYggdrasilNodeInfo().Key), roomID, port, calculatedThreshold, toggleBlockchain, toggleAttacker)
+	gossipNet := NewGossipNetwork(PublicKeyToID(GetYggdrasilNodeInfo().Key), roomID, port, calculatedThreshold, toggleBlockchain, toggleAttacker, noAckBlockchainSave)
 
 	// Get Yggdrasil peers
 	yggdrasilPeers, err := gossipNet.GetYggdrasilPeers("unique")
@@ -650,12 +658,24 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 			network.SendMessageToStatCollector("Message Reached To Peer "+hex.EncodeToString(gn.publicKey), msg.RoomID, 3001)
 		}
 
-		// Send acknowledgment
-		senderID, _ := strconv.ParseUint(msg.Sender, 10, 64)
-		ackData := fmt.Sprintf("ACK for message %s from %s", msg.ID, msg.PublicKey)
-		gn.GossipMessage("ack", "broadcast", ackData, senderID, msg.RoomID, "")
+		// Check if direct blockchain saving is enabled
+		if gn.noAckBlockchainSave && gn.blockChainState {
+			// Directly save to blockchain without waiting for acks
+			chatBlockData := fmt.Sprintf("CHAT_MSG{Sender: %s, Type: %s, Data: %s, Timestamp: %d, Signature: %s}",
+				msg.PublicKey, msg.Type, msg.Data, msg.Timestamp, msg.Signature)
 
-		if gn.blockChainState {
+			if err := blockchain.AddBlock(chatBlockData, msg.RoomID); err != nil {
+				fmt.Printf("Failed to save chat message to blockchain (direct mode): %v\n", err)
+			} else {
+				fmt.Printf("Message directly saved to blockchain (ID: %s)\n", msg.ID)
+				// Send blockchain data to stat collector
+				network.SendBlockchainToStatCollector(msg.RoomID, 3002)
+			}
+		} else if gn.blockChainState {
+			// Send acknowledgment only when not in direct mode
+			senderID, _ := strconv.ParseUint(msg.Sender, 10, 64)
+			ackData := fmt.Sprintf("ACK for message %s from %s", msg.ID, msg.PublicKey)
+			gn.GossipMessage("ack", "broadcast", ackData, senderID, msg.RoomID, "")
 			gn.gossipMutex.Lock()
 			// Initialize acks received counter
 			msg.AcksReceived = 0
@@ -731,6 +751,9 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 
 									if err := blockchain.AddBlock(chatBlockData, gn.roomID); err != nil {
 										fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
+									} else {
+										// Send blockchain data to stat collector
+										network.SendBlockchainToStatCollector(gn.roomID, 3002)
 									}
 
 									// Remove from processing list
@@ -795,6 +818,9 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 
 								if err := blockchain.AddBlock(chatBlockData, msg.RoomID); err != nil {
 									fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
+								} else {
+									// Send blockchain data to stat collector
+									network.SendBlockchainToStatCollector(msg.RoomID, 3002)
 								}
 
 								// Remove from processing list

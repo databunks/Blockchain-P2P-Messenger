@@ -32,8 +32,6 @@ type Message struct {
 	Timestamp        uint64 `json:"timestamp"`
 }
 
-
-
 type Peer struct {
 	Remote    string  `json:"remote"`
 	Up        bool    `json:"up"`
@@ -62,7 +60,6 @@ type YggdrasilNodeInfo struct {
 	Subnet         string `json:"subnet"`
 }
 
-
 var nodes []*consensus.Server
 
 var peerIDs []uint64
@@ -75,13 +72,11 @@ var isCensoringTest bool
 
 var receivedCensoredMessage bool
 
-
 func init() {
-    gob.Register(&consensus.Transaction{})
+	gob.Register(&consensus.Transaction{})
 }
 
-
-func InitializeNetwork(roomID string, disableAuthToggle bool, isCensoringTestToggle bool) error{
+func InitializeNetwork(roomID string, disableAuthToggle bool, isCensoringTestToggle bool) error {
 	disableAuth = disableAuthToggle
 	isCensoringTest = isCensoringTestToggle
 
@@ -121,8 +116,6 @@ func InitializeNetwork(roomID string, disableAuthToggle bool, isCensoringTestTog
 	// Link peers to consensus (public key is passed into node id)
 	// (New node represents our local server)
 
-
-
 	// Adding current public key in
 	// Load environment variables from .env file
 	err := godotenv.Load("../keydetails.env")
@@ -136,7 +129,6 @@ func InitializeNetwork(roomID string, disableAuthToggle bool, isCensoringTestTog
 		log.Fatal("ED25519_PUBLIC_KEY is not set in .env file")
 	}
 
-
 	peerIDs = append(peerIDs, PublicKeyToID(publicKeyHex))
 
 	// Translating public keys to uint34 IDs
@@ -145,18 +137,15 @@ func InitializeNetwork(roomID string, disableAuthToggle bool, isCensoringTestTog
 	}
 
 	// Sort nodeIDs in ascending order
-    sort.Slice(peerIDs, func(i, j int) bool {
-        return peerIDs[i] < peerIDs[j]
-    })
-
-	
+	sort.Slice(peerIDs, func(i, j int) bool {
+		return peerIDs[i] < peerIDs[j]
+	})
 
 	for i, id := range peerIDs {
-        fmt.Printf("Node original ID %d assigned index ID %d\n", id, i)
+		fmt.Printf("Node original ID %d assigned index ID %d\n", id, i)
 		nodeIDs = append(nodeIDs, uint64(i))
-    }
+	}
 
-	
 	go ListenOnPort(3000)
 
 	nodes = consensus.InitializeConsensus(len(nodeIDs), nodeIDs)
@@ -165,9 +154,6 @@ func InitializeNetwork(roomID string, disableAuthToggle bool, isCensoringTestTog
 
 	return nil
 }
-
-
-
 
 // Function to check if an item is not in a list
 func isNotInList(item Peer, list []Peer) bool {
@@ -276,7 +262,7 @@ func handleConnection(conn net.Conn) {
 			// Confidentialty: E2EE, tampering,
 			// Integrity of blockchain
 
-			if (!disableAuth){
+			if !disableAuth {
 				// Validate the digital signature
 				if !VerifyMessageSignature([]byte(message.Message), message.DigitalSignature, peer.PublicKey) {
 					log.Printf("Invalid signature for message from %s\nMessage: %s\nSignature:%s", message.PublicKey, message.Message, message.DigitalSignature)
@@ -286,19 +272,18 @@ func handleConnection(conn net.Conn) {
 					return
 				}
 			}
-			
+
 			log.Printf("Authenticated!")
 
 			fmt.Println(message.Message)
 			switch message.Type {
 			case "chat":
-				if (isCensoringTest){
-					if strings.Contains(message.Message, "Official group chat message!"){
-						SendMessageToStatCollector("Received Censored Message " +  strconv.FormatUint(message.Timestamp, 10), message.RoomID, 3002)
-						
+				if isCensoringTest {
+					if strings.Contains(message.Message, "Official group chat message!") {
+						SendMessageToStatCollector("Received Censored Message "+strconv.FormatUint(message.Timestamp, 10), message.RoomID, 3002)
+
 					}
 				}
-
 
 				// // Doesent store message content (apart from sender, type, digital signature and timestamp)
 				// tx := consensus.NewTransaction(message.PublicKey, "chat", message.DigitalSignature, message.Timestamp, message.RoomID)
@@ -320,18 +305,12 @@ func handleConnection(conn net.Conn) {
 				// nodes[0].HB.AddTransaction(tx)
 				// nodes[1].HB.AddTransaction(tx)
 				// nodes[2].HB.AddTransaction(tx)
-				
-
-				
-
 
 				// // TODO: Adding them as transactions and syncing with consensus
 
-				
 				// fmt.Println("Added Message as Transaction")
 			}
 
-			
 			return
 		}
 	}
@@ -523,29 +502,25 @@ func SendCustomMessage(messageContent string, publicKeyHex string, roomID string
 	return nil
 }
 
-func SendMessageToStatCollector(messageContent string, roomID string, port int){
+func SendMessageToStatCollector(messageContent string, roomID string, port int) {
 
 	var statCollectorPublicKey string = "0000005ed266dc58d687b6ed84af4b4657162033cf379e9d8299bba941ae66e0"
 
-	
-
 	peers := peerDetails.GetPeersInRoom(roomID)
 
-	for _, peer := range peers{
+	for _, peer := range peers {
 
 		if peer.PublicKey == statCollectorPublicKey {
-			
+
 			// Dial peer
 			fmt.Printf("Establishing connection with %s, %s.......\n", peer.IP, peer.PublicKey)
 
-			
 			address := net.JoinHostPort(peer.IP, fmt.Sprintf("%d", port))
 			fmt.Println(address)
 
-			if (GetYggdrasilNodeInfo().Key == statCollectorPublicKey){
+			if GetYggdrasilNodeInfo().Key == statCollectorPublicKey {
 				address = "localhost:" + "3002"
 			}
-	
 
 			conn, err := net.Dial("tcp", address)
 			if err != nil {
@@ -583,6 +558,80 @@ func SendMessageToStatCollector(messageContent string, roomID string, port int){
 		}
 	}
 
+}
+
+// SendBlockchainToStatCollector reads blockchain data from file and sends it to the stat collector
+func SendBlockchainToStatCollector(roomID string, port int) {
+
+	var statCollectorPublicKey string = "0000005ed266dc58d687b6ed84af4b4657162033cf379e9d8299bba941ae66e0"
+
+	// Read blockchain data from file
+	blockchainFilePath := fmt.Sprintf("src/main/data/%s/blockchain.json", roomID)
+	blockchainData, err := os.ReadFile(blockchainFilePath)
+	if err != nil {
+		log.Printf("Error reading blockchain file %s: %v\n", blockchainFilePath, err)
+		return
+	}
+
+	peers := peerDetails.GetPeersInRoom(roomID)
+
+	for _, peer := range peers {
+
+		if peer.PublicKey == statCollectorPublicKey {
+
+			// Dial peer
+			fmt.Printf("Establishing blockchain connection with %s, %s.......\n", peer.IP, peer.PublicKey)
+
+			address := net.JoinHostPort(peer.IP, fmt.Sprintf("%d", port))
+			fmt.Println(address)
+
+			if GetYggdrasilNodeInfo().Key == statCollectorPublicKey {
+				address = "localhost:" + "3002"
+			}
+
+			conn, err := net.Dial("tcp", address)
+			if err != nil {
+				log.Printf("Error connecting to %s: %v\n", peer.IP, err)
+				return
+			}
+			defer conn.Close()
+
+			// Create blockchain message structure
+			blockchainMessage := map[string]interface{}{
+				"type":      "blockchain_data",
+				"data":      string(blockchainData),
+				"room_id":   roomID,
+				"timestamp": time.Now().Unix(),
+			}
+
+			// Marshal blockchain message
+			msgBytes, err := json.Marshal(blockchainMessage)
+			if err != nil {
+				log.Printf("Error marshaling blockchain message for %s: %v\n", peer.IP, err)
+				return
+			}
+
+			// Send blockchain message
+			_, err = conn.Write(msgBytes)
+			if err != nil {
+				log.Printf("Error sending blockchain message to %s: %v\n", peer.IP, err)
+				return
+			}
+
+			// Read the response from the peer
+			buffer := make([]byte, 1024) // Buffer to store incoming data
+			n, err := conn.Read(buffer)
+			if err != nil {
+				log.Printf("Error reading response from %s: %v\n", peer.IP, err)
+				return
+			}
+
+			// Print the response received from the peer
+			response := string(buffer[:n])
+			fmt.Printf("Blockchain response from %s: %s\n", peer.IP, response)
+
+		}
+	}
 
 }
 
@@ -676,8 +725,6 @@ func StartYggdrasilServer() error {
 	return nil
 }
 
-
-
 // PublicKeyToID converts a hex-encoded ed25519 public key string into a deterministic uint64 ID.
 func PublicKeyToID(hexStr string) uint64 {
 	bytes, err := hex.DecodeString(hexStr)
@@ -692,7 +739,6 @@ func PublicKeyToID(hexStr string) uint64 {
 	hash := sha256.Sum256(bytes)
 	return binary.LittleEndian.Uint64(hash[:8])
 }
-
 
 func PublicKeyToNodeID(hexStr string) uint64 {
 
