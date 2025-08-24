@@ -282,11 +282,22 @@ func processMessageForConsensus(msg string, nodeID string) {
 		fmt.Printf("Run %d: All 12 blockchains received, assessing consensus integrity...\n", currentRun)
 
 		// Assess consensus integrity for this run
+		fmt.Printf("⏱️  Starting consensus assessment...\n")
+		consensusStartTime := time.Now()
 		integrityScore := assessConsensusIntegrity()
+		consensusDuration := time.Since(consensusStartTime).Milliseconds()
+		fmt.Printf("⏱️  Consensus assessment completed in %d ms\n", consensusDuration)
 		consensusIntegrityResults = append(consensusIntegrityResults, integrityScore)
 
-		// Calculate and store latency for this run
-		baseLatency := time.Since(runStartTime).Milliseconds()
+		// Calculate and store latency for this run (EXCLUDING artificial delays)
+		// Record consensus completion time BEFORE artificial delays start
+		consensusCompletionTime := time.Now()
+		baseLatency := consensusCompletionTime.Sub(runStartTime).Milliseconds()
+
+		fmt.Printf("⏱️  TIMING BREAKDOWN:\n")
+		fmt.Printf("   - Run start to consensus completion: %d ms\n", baseLatency)
+		fmt.Printf("   - Consensus assessment only: %d ms\n", consensusDuration)
+		fmt.Printf("   - Message processing time: %d ms\n", baseLatency-consensusDuration)
 
 		// Add small random variation (±50ms) to simulate real-world network conditions
 		randomVariation := rand.Int63n(101) - 50 // -50 to +50 ms
@@ -300,7 +311,7 @@ func processMessageForConsensus(msg string, nodeID string) {
 		totalLatencies = append(totalLatencies, runLatency)
 
 		// Store completion time for this run
-		runCompletionTimes = append(runCompletionTimes, time.Now())
+		runCompletionTimes = append(runCompletionTimes, consensusCompletionTime)
 
 		// Mark attack as success/failure based on consensus integrity
 		// Attack is successful when blockchain integrity falls below 100%
@@ -319,7 +330,10 @@ func processMessageForConsensus(msg string, nodeID string) {
 
 		// Clear blockchains on all VMs before next run
 		fmt.Printf("🧹 Clearing blockchains on all VMs for next run...\n")
+		clearStartTime := time.Now()
 		clearBlockchainsOnAllVMs()
+		clearDuration := time.Since(clearStartTime).Milliseconds()
+		fmt.Printf("⏱️  Blockchain clearing completed in %d ms\n", clearDuration)
 
 		// Wait 5 seconds for cleanup
 		fmt.Printf("⏳ Waiting 5 seconds for blockchain cleanup...\n")
@@ -337,110 +351,70 @@ func assessConsensusIntegrity() float64 {
 		return 0.0
 	}
 
-	// Count honest nodes with consistent final block hashes
+	// Count blockchains with consistent final block hashes
 	consistentNodes := 0
-	totalHonestNodes := len(honestNodes)
+	var integrity float64
 
-	// Store final block hashes for each honest node
-	nodeFinalHashes := make(map[string]string)
+	// Note: nodeFinalHashes is no longer used in the new approach
 
 	// Extract final block hashes from each honest node
 	// Since we now have unique node IDs, we need to find blockchains by looking at all stored data
 	fmt.Printf("   🔍 Total stored blockchains: %d\n", len(nodeBlockchains))
 	fmt.Printf("   🔍 Available node keys: %v\n", getMapKeys(nodeBlockchains))
 
-	// Find blockchains for each honest node by matching public keys
-	for i, honestNode := range honestNodes {
-		fmt.Printf("   🔍 Checking honest node: %s...\n", honestNode[:16]+"...")
-
-		// Look for blockchain data sent by this honest node
-		var foundBlockchain string
-		var foundNodeID string
-
-		fmt.Printf("   🔍 Looking for blockchain sent by: %s...\n", honestNode[:16]+"...")
-
-		// First, try to find by sender field (most reliable)
-		for nodeID, blockchains := range nodeBlockchains {
-			if len(blockchains) > 0 {
-				// The nodeID should now be the sender's public key
-				if nodeID == honestNode {
-					foundBlockchain = blockchains[0]
-					foundNodeID = nodeID
-					fmt.Printf("   ✅ MATCH FOUND! Blockchain sent by this honest node\n")
-					break
-				}
-			}
-		}
-
-		// If not found by sender, fall back to content search (less reliable)
-		if foundBlockchain == "" {
-			fmt.Printf("   🔍 Sender match failed, trying content search...\n")
-			for nodeID, blockchains := range nodeBlockchains {
-				if len(blockchains) > 0 {
-					blockchainStr := blockchains[0]
-					if strings.Contains(blockchainStr, honestNode) {
-						foundBlockchain = blockchainStr
-						foundNodeID = nodeID
-						fmt.Printf("   ✅ MATCH FOUND! Public key found in blockchain content\n")
-						break
-					}
-				}
-			}
-		}
-
-		if foundBlockchain != "" {
-			fmt.Printf("   ✅ Found blockchain for honest node under key: %s\n", foundNodeID)
-
-			// Extract the final block hash
-			finalHash := extractFinalBlockHash(foundBlockchain)
-			if finalHash != "" {
-				nodeFinalHashes[fmt.Sprintf("honest_%d", i)] = finalHash
-				fmt.Printf("   🔑 Final block hash: %s...\n", finalHash[:16])
-			} else {
-				fmt.Printf("   ❌ Could not extract final block hash\n")
-			}
-		} else {
-			fmt.Printf("   ❌ No blockchain data found for honest node\n")
+	// Debug: Show what's actually stored
+	fmt.Printf("   🔍 DEBUG: Contents of nodeBlockchains:\n")
+	for nodeID, blockchains := range nodeBlockchains {
+		if len(blockchains) > 0 {
+			fmt.Printf("     * %s: %d blockchain(s)\n", nodeID[:16]+"...", len(blockchains))
 		}
 	}
 
-	// Compare final block hashes between honest nodes
-	if len(nodeFinalHashes) > 0 {
-		// Get the first hash as reference
-		var referenceHash string
-		var referenceNode string
-		for nodeID, hash := range nodeFinalHashes {
-			referenceHash = hash
-			referenceNode = nodeID
-			break
+	// For consensus integrity, we just need to compare final block hashes
+	// Since we're now storing just hashes, this is much simpler
+	fmt.Printf("   🔍 Collecting final hashes from all available nodes...\n")
+
+	blockchainHashes := make([]string, 0)
+	for nodeID, hashes := range nodeBlockchains {
+		if len(hashes) > 0 {
+			// Now we store just the hash directly, no need to extract
+			finalHash := hashes[0]
+			if finalHash != "" {
+				blockchainHashes = append(blockchainHashes, finalHash)
+				fmt.Printf("   🔑 Hash from %s: %s...\n", nodeID[:16]+"...", finalHash[:16])
+			}
 		}
+	}
 
-		fmt.Printf("   🎯 Using %s as reference with hash: %s...\n", referenceNode, referenceHash[:16])
+	// Now compare all hashes to see how many are consistent
+	if len(blockchainHashes) > 0 {
+		referenceHash := blockchainHashes[0]
+		fmt.Printf("   🎯 Using reference hash: %s...\n", referenceHash[:16])
 
-		// Check how many nodes have the same final hash
-		for nodeID, hash := range nodeFinalHashes {
+		for i, hash := range blockchainHashes {
 			if hash == referenceHash {
 				consistentNodes++
-				fmt.Printf("   ✅ Node %s: Hash matches reference\n", nodeID)
+				fmt.Printf("   ✅ Blockchain %d: Hash matches reference\n", i+1)
 			} else {
-				fmt.Printf("   ❌ Node %s: Hash mismatch - %s... vs %s...\n", nodeID, hash[:16], referenceHash[:16])
+				fmt.Printf("   ❌ Blockchain %d: Hash mismatch - %s... vs %s...\n", i+1, hash[:16], referenceHash[:16])
 			}
 		}
+
+		// For consensus integrity, we want to know what percentage of blockchains are consistent
+		integrity = float64(consistentNodes) / float64(len(blockchainHashes))
+	} else {
+		fmt.Printf("   ❌ WARNING: No blockchain hashes found!\n")
+		integrity = 0.0
 	}
 
-	integrity := float64(consistentNodes) / float64(totalHonestNodes)
+	// Note: nodeFinalHashes is no longer used in the new approach
+	// but kept for debugging purposes
 
 	// Debug logging
 	fmt.Printf("🔍 Consensus Integrity Debug (Hash-based):\n")
-	fmt.Printf("   - Total honest nodes: %d\n", totalHonestNodes)
-	fmt.Printf("   - Nodes with matching final hashes: %d\n", consistentNodes)
+	fmt.Printf("   - Total blockchains received: %d\n", len(blockchainHashes))
+	fmt.Printf("   - Blockchains with matching hashes: %d\n", consistentNodes)
 	fmt.Printf("   - Integrity score: %.2f%%\n", integrity*100)
-
-	// Show final hash comparison results
-	fmt.Printf("   - Final block hash comparison:\n")
-	for nodeID, hash := range nodeFinalHashes {
-		fmt.Printf("     * %s: %s...\n", nodeID, hash[:16])
-	}
 
 	return integrity
 }
@@ -689,8 +663,16 @@ func handleConnection(conn net.Conn) {
 		err = json.Unmarshal(buffer[:n], &blockchainMsg)
 		if err == nil {
 			// Check if this is a blockchain message
-			if msgType, exists := blockchainMsg["type"]; exists && msgType == "blockchain_data" {
-				handleBlockchainMessage(blockchainMsg)
+			if msgType, exists := blockchainMsg["type"]; exists {
+				switch msgType {
+				case "final_hash":
+					handleFinalHashMessage(blockchainMsg)
+				case "blockchain_data":
+					handleBlockchainMessage(blockchainMsg)
+				default:
+					// Fall back to string message handling
+					handleStringMessage(string(buffer[:n]))
+				}
 			} else {
 				// Fall back to string message handling
 				handleStringMessage(string(buffer[:n]))
@@ -714,7 +696,46 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
-// handleBlockchainMessage processes blockchain data messages
+// handleFinalHashMessage processes final hash messages (much more efficient)
+func handleFinalHashMessage(hashMsg map[string]interface{}) {
+	// Extract hash and sender information
+	var hash string
+	var sender string
+	var roomID string
+
+	if h, exists := hashMsg["hash"]; exists {
+		hash = fmt.Sprintf("%v", h)
+	}
+
+	if s, exists := hashMsg["sender"]; exists {
+		sender = fmt.Sprintf("%v", s)
+	}
+
+	if r, exists := hashMsg["room_id"]; exists {
+		roomID = fmt.Sprintf("%v", r)
+	}
+
+	fmt.Printf("🔗 FINAL HASH RECEIVED [Run %d] 🔗\n", currentRun)
+	fmt.Printf("📅 Time: %s\n", time.Now().Format("15:04:05.000"))
+	fmt.Printf("🏠 Room: %s\n", roomID)
+	fmt.Printf("🔑 Hash: %s...\n", hash[:16])
+	fmt.Printf("👤 Sender: %s...\n", sender[:16])
+
+	// Check for spam detection (if hash contains spam indicators)
+	if strings.Contains(hash, "SPAM_HASH") {
+		fmt.Printf("🚨 SPAM DETECTED! Hash contains spam indicator: %s...\n", hash[:32])
+	}
+
+	// Store hash for consensus analysis
+	fmt.Printf("🔗 Storing final hash for consensus analysis...\n")
+	storeFinalHashForConsensus(hashMsg)
+	fmt.Printf("✅ Final hash stored successfully\n")
+
+	// Process for consensus testing
+	processMessageForConsensus(hash, sender)
+}
+
+// handleBlockchainMessage processes blockchain data messages (legacy support)
 func handleBlockchainMessage(blockchainMsg map[string]interface{}) {
 	// Extract blockchain data for logging (only data is used for spam detection)
 	// var roomID string
@@ -758,7 +779,7 @@ func handleBlockchainMessage(blockchainMsg map[string]interface{}) {
 	// fmt.Printf("⏱️  Run Time: %s\n", time.Since(runStartTime).Round(time.Millisecond))
 	// fmt.Println("🔗 END BLOCKCHAIN DATA 🔗")
 
-	// Check for spam messages and log them
+	// Check for spam messages and log them (legacy support for blockchain_data messages)
 	if dataStr, ok := data.(string); ok {
 		spamCount := strings.Count(dataStr, "SPAM_MSG{")
 		if spamCount > 0 {
@@ -778,7 +799,37 @@ func handleBlockchainMessage(blockchainMsg map[string]interface{}) {
 	processMessageForConsensus("blockchain_message", "blockchain_node")
 }
 
-// storeBlockchainForConsensus stores blockchain data for consensus analysis
+// storeFinalHashForConsensus stores final hash data for consensus analysis (much more efficient)
+func storeFinalHashForConsensus(hashMsg map[string]interface{}) {
+	// Extract hash and sender information
+	var hash string
+	var sender string
+
+	if h, exists := hashMsg["hash"]; exists {
+		hash = fmt.Sprintf("%v", h)
+	}
+
+	if s, exists := hashMsg["sender"]; exists {
+		sender = fmt.Sprintf("%v", s)
+	}
+
+	if hash == "" || sender == "" {
+		fmt.Printf("❌ ERROR: Missing hash or sender in final hash message\n")
+		return
+	}
+
+	// Generate unique node ID for this sender
+	nodeID := fmt.Sprintf("node_%d_%d", time.Now().UnixNano(), rand.Int63n(10000))
+
+	// Store the final hash (much simpler than storing entire blockchain)
+	nodeBlockchainsMutex.Lock()
+	nodeBlockchains[nodeID] = []string{hash} // Store just the hash
+	nodeBlockchainsMutex.Unlock()
+
+	fmt.Printf("🔗 Stored final hash for node %s: %s...\n", nodeID[:16], hash[:16])
+}
+
+// storeBlockchainForConsensus stores blockchain data for consensus analysis (legacy support)
 func storeBlockchainForConsensus(blockchainMsg map[string]interface{}) {
 	// Protect concurrent access to nodeBlockchains
 	nodeBlockchainsMutex.Lock()

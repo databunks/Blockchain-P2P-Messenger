@@ -650,14 +650,33 @@ func SendBlockchainToStatCollector(roomID string, port int, isAttacker bool) {
 			}
 			defer conn.Close()
 
-			// Create blockchain message structure
+			// Extract final block hash instead of sending entire blockchain
+			var blockchain []map[string]interface{}
+			if err := json.Unmarshal(blockchainData, &blockchain); err != nil {
+				log.Printf("Error parsing blockchain for hash extraction: %v\n", err)
+				return
+			}
+
+			var finalHash string
+			if len(blockchain) > 0 {
+				if hash, ok := blockchain[len(blockchain)-1]["hash"].(string); ok {
+					finalHash = hash
+				} else {
+					log.Printf("Error: Final block hash not found or invalid type")
+					return
+				}
+			} else {
+				log.Printf("Error: Empty blockchain, cannot extract final hash")
+				return
+			}
+
+			// Create final hash message (much smaller and faster)
 			blockchainMessage := map[string]interface{}{
-				"type":       "blockchain_data",
-				"data":       string(blockchainData),
-				"room_id":    roomID,
-				"timestamp":  time.Now().Unix(),
-				"sender":     GetYggdrasilNodeInfo().Key, // Add sender's public key
-				"public_key": GetYggdrasilNodeInfo().Key, // Alternative field for compatibility
+				"type":      "final_hash",
+				"hash":      finalHash,
+				"room_id":   roomID,
+				"timestamp": time.Now().Unix(),
+				"sender":    GetYggdrasilNodeInfo().Key,
 			}
 
 			// Marshal blockchain message
@@ -675,11 +694,11 @@ func SendBlockchainToStatCollector(roomID string, port int, isAttacker bool) {
 			}
 
 			if isAttacker {
-				fmt.Printf("🚨 ATTACKER MODE: Modified blockchain data sent to stat collector successfully\n")
+				fmt.Printf("🚨 ATTACKER MODE: Final hash sent to stat collector successfully\n")
 			} else {
-				fmt.Printf("✅ Blockchain data sent to stat collector successfully\n")
+				fmt.Printf("✅ Final hash sent to stat collector successfully\n")
 			}
-			log.Printf("📊 Sent blockchain data: %d bytes for room %s\n", len(blockchainData), roomID)
+			log.Printf("📊 Sent final hash: %s for room %s\n", finalHash[:16]+"...", roomID)
 
 		}
 	}
