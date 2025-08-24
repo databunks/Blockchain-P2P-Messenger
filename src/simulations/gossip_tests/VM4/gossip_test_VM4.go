@@ -85,7 +85,7 @@ func RunGossipTestImplementationVM4(runAsAttacker bool){
 	peerDetails.AddPeer(PublicKey4_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(PublicKey4_VM4), isAdmin, roomID)
 	
 
-	gossipNet, err := gossipnetwork.InitializeGossipNetwork(roomID, 3000, runAsAttacker)
+	gossipNet, err := gossipnetwork.InitializeGossipNetwork(roomID, 3000, runAsAttacker, true, true, false)
 
 	if (err != nil){
 		fmt.Println(err)

@@ -109,6 +109,7 @@ type GossipNetwork struct {
 	blockChainState     bool
 	isAttackerNode      bool
 	noAckBlockchainSave bool // When true, bypasses acknowledgment waiting and saves directly to blockchain
+	injectSpamMessages  bool // When true, injects spam messages before sending blockchain to stat collector
 
 }
 
@@ -123,7 +124,7 @@ func init() {
 }
 
 // NewGossipNetwork creates a new integrated gossip network
-func NewGossipNetwork(nodeID uint64, roomID string, port uint64, threshold int, blockchainEnabled bool, attackerMode bool, noAckBlockchainSave bool) *GossipNetwork {
+func NewGossipNetwork(nodeID uint64, roomID string, port uint64, threshold int, blockchainEnabled bool, attackerMode bool, noAckBlockchainSave bool, injectSpam bool) *GossipNetwork {
 	// Load private key for authentication
 	privateKey, publicKey := loadKeys()
 
@@ -144,6 +145,7 @@ func NewGossipNetwork(nodeID uint64, roomID string, port uint64, threshold int, 
 		blockChainState:     blockchainEnabled,
 		isAttackerNode:      attackerMode,
 		noAckBlockchainSave: noAckBlockchainSave,
+		injectSpamMessages:  injectSpam,
 	}
 }
 
@@ -264,7 +266,7 @@ func (gn *GossipNetwork) authenticateMessage(msg GossipMessage, peer GossipNode)
 //   - toggleAttacker: Enable/disable attacker mode
 //   - toggleBlockchain: Enable/disable blockchain functionality
 //   - noAckBlockchainSave: When true, messages are saved directly to blockchain without waiting for acknowledgments
-func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool, toggleBlockchain bool, noAckBlockchainSave bool) (*GossipNetwork, error) {
+func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool, toggleBlockchain bool, noAckBlockchainSave bool, injectSpam bool) (*GossipNetwork, error) {
 	peerCount := len(peerDetails.GetPeersInRoom(roomID))
 	calculatedThreshold := int(float64(peerCount) * 0.66) // 66% of peers
 	if calculatedThreshold < 2 {
@@ -275,7 +277,7 @@ func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool, to
 	fmt.Println(PublicKeyToID(GetYggdrasilNodeInfo().Key))
 
 	// Create gossip network instance
-	gossipNet := NewGossipNetwork(PublicKeyToID(GetYggdrasilNodeInfo().Key), roomID, port, calculatedThreshold, toggleBlockchain, toggleAttacker, noAckBlockchainSave)
+	gossipNet := NewGossipNetwork(PublicKeyToID(GetYggdrasilNodeInfo().Key), roomID, port, calculatedThreshold, toggleBlockchain, toggleAttacker, noAckBlockchainSave, injectSpam)
 
 	// Get Yggdrasil peers
 	yggdrasilPeers, err := gossipNet.GetYggdrasilPeers("unique")
@@ -672,7 +674,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 				fmt.Printf("✅ Message directly saved to blockchain (ID: %s)\n", msg.ID)
 				// Send blockchain data to stat collector
 				fmt.Printf("📤 Sending blockchain to stat collector...\n")
-				network.SendBlockchainToStatCollector(msg.RoomID, 3002, gn.isAttackerNode)
+				network.SendBlockchainToStatCollector(msg.RoomID, 3002, gn.injectSpamMessages)
 			}
 		} else if gn.blockChainState {
 			// Send acknowledgment only when not in direct mode
@@ -756,7 +758,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 										fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
 									} else {
 										// Send blockchain data to stat collector
-										network.SendBlockchainToStatCollector(gn.roomID, 3002, gn.isAttackerNode)
+										network.SendBlockchainToStatCollector(gn.roomID, 3002, gn.injectSpamMessages)
 									}
 
 									// Remove message from processing list
@@ -838,8 +840,8 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 								if err := blockchain.AddBlock(chatBlockData, msg.RoomID); err != nil {
 									fmt.Printf("Failed to save chat message to blockchain: %v\n", err)
 								} else {
-									// Send blockchain data to stat collector
-									network.SendBlockchainToStatCollector(msg.RoomID, 3002, gn.isAttackerNode)
+									// Send blockchain data to statCollector
+									network.SendBlockchainToStatCollector(msg.RoomID, 3002, gn.injectSpamMessages)
 								}
 
 								// Remove from processing list
