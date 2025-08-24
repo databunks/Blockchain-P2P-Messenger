@@ -652,6 +652,17 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 	// Handle different message types
 	switch msg.Type {
 	case "chat":
+	case "clear_blockchain":
+		// Handle clear blockchain command
+		fmt.Printf("Received clear blockchain command: %s\n", msg.Data)
+
+		// Clear the blockchain for this room
+		err := clearBlockchainForRoom(msg.RoomID)
+		if err != nil {
+			fmt.Printf("Failed to clear blockchain: %v\n", err)
+		} else {
+			fmt.Printf("Blockchain cleared successfully for room %s\n", msg.RoomID)
+		}
 
 		// Reachability check
 		if msg.Data == "I hope I don't get censored!" {
@@ -1108,4 +1119,42 @@ func PublicKeyToNodeID(hexStr string) uint64 {
 	}
 
 	return uint64(0)
+}
+
+// clearBlockchainForRoom clears the blockchain file for a specific room
+func clearBlockchainForRoom(roomID string) error {
+	blockchainPath := fmt.Sprintf("data/%s/blockchain.json", roomID)
+
+	// Read the current blockchain to preserve genesis and peer blocks
+	blockchainData, err := os.ReadFile(blockchainPath)
+	if err != nil {
+		return fmt.Errorf("failed to read blockchain file: %v", err)
+	}
+
+	// Parse the blockchain to find and keep only genesis and peer blocks
+	var blockchain []map[string]interface{}
+	if err := json.Unmarshal(blockchainData, &blockchain); err != nil {
+		return fmt.Errorf("failed to parse blockchain: %v", err)
+	}
+
+	// Keep only the first 5 blocks (genesis + 4 peer additions)
+	// Assuming the first 5 blocks are genesis and peer setup
+	var preservedBlocks []map[string]interface{}
+	for i := 0; i < len(blockchain) && i < 5; i++ {
+		preservedBlocks = append(preservedBlocks, blockchain[i])
+	}
+
+	// Write back the preserved blocks
+	preservedData, err := json.MarshalIndent(preservedBlocks, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal preserved blocks: %v", err)
+	}
+
+	err = os.WriteFile(blockchainPath, preservedData, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write preserved blockchain: %v", err)
+	}
+
+	fmt.Printf("Blockchain cleared - kept genesis and peer blocks, removed chat messages for room %s\n", roomID)
+	return nil
 }

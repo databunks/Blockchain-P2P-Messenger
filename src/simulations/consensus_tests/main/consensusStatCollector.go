@@ -121,8 +121,10 @@ func startNewRun() {
 	fmt.Printf("\n=== STARTING RUN %d/%d ===\n", currentRun, totalRuns)
 	fmt.Printf("Run started at: %s\n", runStartTime.Format("15:04:05"))
 	fmt.Printf("Expected: 12 blockchains (3 messages from VM1 = 12 blockchains total)\n")
-	fmt.Println("VM1 will automatically start sending messages...")
-	fmt.Println("VM2, VM3, VM4 will process messages and send blockchains automatically...")
+	fmt.Println("Sending start gossiping command to VM1...")
+
+	// Send start gossiping command to VM1
+	sendStartGossipingCommand()
 }
 
 // sendStartMessageToAttackerNodes notifies attacker nodes to begin their attack
@@ -236,7 +238,16 @@ func processMessageForConsensus(msg string, nodeID string) {
 
 	// Increment message count for current run
 	messagesThisRun++
-	fmt.Printf("Run %d: Blockchain %d/12 received from %s\n", currentRun, messagesThisRun, nodeID[:16]+"...")
+
+	// Safely truncate nodeID for display (avoid slice bounds error)
+	var displayID string
+	if len(nodeID) >= 16 {
+		displayID = nodeID[:16] + "..."
+	} else {
+		displayID = nodeID
+	}
+
+	fmt.Printf("Run %d: Blockchain %d/12 received from %s\n", currentRun, messagesThisRun, displayID)
 
 	// Check if run is complete
 	if messagesThisRun >= 12 {
@@ -252,6 +263,14 @@ func processMessageForConsensus(msg string, nodeID string) {
 		attackSuccessRates = append(attackSuccessRates, asr)
 
 		fmt.Printf("Run %d: Consensus Integrity: %.2f%%, ASR: %.2f%%\n", currentRun, integrityScore*100, asr*100)
+
+		// Clear blockchains on all VMs before next run
+		fmt.Printf("🧹 Clearing blockchains on all VMs for next run...\n")
+		clearBlockchainsOnAllVMs()
+
+		// Wait 5 seconds for cleanup
+		fmt.Printf("⏳ Waiting 5 seconds for blockchain cleanup...\n")
+		time.Sleep(5 * time.Second)
 	}
 }
 
@@ -429,6 +448,121 @@ func handleBlockchainMessage(blockchainMsg map[string]interface{}) {
 
 	// Process for consensus testing
 	processMessageForConsensus("blockchain_message", "blockchain_node")
+}
+
+// sendStartGossipingCommand sends a command to VM1 to start gossiping messages
+func sendStartGossipingCommand() {
+	// VM1's address (command listener on port 3001)
+	vm1Address := "localhost:3001"
+
+	fmt.Printf("📡 Sending start gossiping command to VM1 at %s...\n", vm1Address)
+
+	// Connect to VM1
+	conn, err := net.Dial("tcp", vm1Address)
+	if err != nil {
+		fmt.Printf("❌ Failed to connect to VM1: %v\n", err)
+		return
+	}
+	defer conn.Close()
+
+	// Create start gossiping command
+	startCommand := map[string]interface{}{
+		"type":      "start_gossiping",
+		"run":       currentRun,
+		"timestamp": time.Now().Unix(),
+	}
+
+	// Marshal and send command
+	commandBytes, err := json.Marshal(startCommand)
+	if err != nil {
+		fmt.Printf("❌ Failed to marshal start command: %v\n", err)
+		return
+	}
+
+	_, err = conn.Write(commandBytes)
+	if err != nil {
+		fmt.Printf("❌ Failed to send start command to VM1: %v\n", err)
+		return
+	}
+
+	// Read response from VM1
+	buffer := make([]byte, 1024)
+	n, err := conn.Read(buffer)
+	if err != nil {
+		fmt.Printf("❌ Failed to read response from VM1: %v\n", err)
+		return
+	}
+
+	response := string(buffer[:n])
+	fmt.Printf("✅ VM1 response: %s\n", response)
+}
+
+// clearBlockchainsOnAllVMs sends clear blockchain commands to all VMs
+func clearBlockchainsOnAllVMs() {
+	// VM addresses (assuming they're all running on localhost with different ports)
+	vmAddresses := map[string]string{
+		"VM1": "localhost:3001", // Command listener port
+		"VM2": "localhost:3002", // Assuming VM2 listens on 3002
+		"VM3": "localhost:3003", // Assuming VM3 listens on 3003
+		"VM4": "localhost:3004", // Assuming VM4 listens on 3004
+	}
+
+	var wg sync.WaitGroup
+
+	for vmName, address := range vmAddresses {
+		wg.Add(1)
+		go func(name, addr string) {
+			defer wg.Done()
+			sendClearBlockchainCommand(name, addr)
+		}(vmName, address)
+	}
+
+	wg.Wait()
+	fmt.Println("🧹 Blockchain clear commands sent to all VMs")
+}
+
+// sendClearBlockchainCommand sends a clear blockchain command to a specific VM
+func sendClearBlockchainCommand(vmName, address string) {
+	fmt.Printf("🧹 Sending clear blockchain command to %s at %s...\n", vmName, address)
+
+	// Connect to VM
+	conn, err := net.Dial("tcp", address)
+	if err != nil {
+		fmt.Printf("❌ Failed to connect to %s: %v\n", vmName, err)
+		return
+	}
+	defer conn.Close()
+
+	// Create clear blockchain command
+	clearCommand := map[string]interface{}{
+		"type":      "clear_blockchain",
+		"run":       currentRun,
+		"timestamp": time.Now().Unix(),
+	}
+
+	// Marshal and send command
+	commandBytes, err := json.Marshal(clearCommand)
+	if err != nil {
+		fmt.Printf("❌ Failed to marshal clear command for %s: %v\n", vmName, err)
+		return
+	}
+
+	_, err = conn.Write(commandBytes)
+	if err != nil {
+		fmt.Printf("❌ Failed to send clear command to %s: %v\n", vmName, err)
+		return
+	}
+
+	// Read response from VM
+	buffer := make([]byte, 1024)
+	n, err := conn.Read(buffer)
+	if err != nil {
+		fmt.Printf("❌ Failed to read response from %s: %v\n", vmName, err)
+		return
+	}
+
+	response := string(buffer[:n])
+	fmt.Printf("✅ %s response: %s\n", vmName, response)
 }
 
 // handleStringMessage processes legacy string messages

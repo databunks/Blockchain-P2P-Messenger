@@ -4,7 +4,10 @@ import (
 	"blockchain-p2p-messenger/src/derivationFunctions"
 	gossipnetwork "blockchain-p2p-messenger/src/network_gossip"
 	"blockchain-p2p-messenger/src/peerDetails"
+	"encoding/json"
 	"fmt"
+	"net"
+	"os"
 	"time"
 )
 
@@ -12,6 +15,10 @@ var publicKey_VM1 = "0000005ed266dc58d687b6ed84af4b4657162033cf379e9d8299bba941a
 var publicKey2_VM2 = "927c78b7fa731c2b2f642a1de2fb3318f70bbb142465a75a8802a90e1a526285"
 var publicKey3_VM3 = "9356e1f92f5adff2ab05115d54aff4b8c756d604704b5ddd71ff320f2d5aeecb"
 var publicKey4_VM4 = "0000040cd8e7f870ff1146e03589b988d82aedb6464c5085a9aba945e60c4fcd"
+
+// Global variables to store network info
+var globalGossipNet *gossipnetwork.GossipNetwork
+var globalRoomID string
 
 // N = 4
 // Using No Acks to send back (1 attacker)
@@ -35,25 +42,14 @@ func RunConsensusTestControlVM1() {
 		fmt.Println(err)
 	}
 
-	time.Sleep(time.Second * 5)
+	// Store the gossip network for later use
+	globalGossipNet = gossipNet
+	globalRoomID = roomID
 
-	// Send 3 gossip messages with 1-second delays to allow other VMs to process each message
-	fmt.Println("VM1: Starting consensus test - sending 3 messages...")
+	fmt.Println("VM1: Network initialized, waiting for start gossiping command...")
 
-	// Message 1
-	gossipNet.GossipMessage("chat", "broadcast", "Consensus Test Message 1", 1, roomID, "")
-	fmt.Println("VM1: Sent message 1")
-	time.Sleep(time.Second * 1)
-
-	// Message 2
-	gossipNet.GossipMessage("chat", "broadcast", "Consensus Test Message 2", 1, roomID, "")
-	fmt.Println("VM1: Sent message 2")
-	time.Sleep(time.Second * 1)
-
-	// Message 3
-	gossipNet.GossipMessage("chat", "broadcast", "Consensus Test Message 3", 1, roomID, "")
-	fmt.Println("VM1: Sent message 3")
-	fmt.Println("VM1: All 3 messages sent, waiting for consensus...")
+	// Start listening for commands from stat collector
+	go listenForCommands()
 
 }
 
@@ -65,4 +61,140 @@ func RunConsensusTestCase1VM1() {
 // Case 2: 2 attackers (2 / 4 Attacker nodes)
 func RunConsensusTestCase2VM1() {
 
+}
+
+// listenForCommands listens for commands from the stat collector
+func listenForCommands() {
+	listener, err := net.Listen("tcp", ":3001")
+	if err != nil {
+		fmt.Printf("VM1: Failed to start command listener: %v\n", err)
+		return
+	}
+	defer listener.Close()
+
+	fmt.Println("VM1: Command listener started on port 3000")
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			fmt.Printf("VM1: Failed to accept connection: %v\n", err)
+			continue
+		}
+
+		go handleCommand(conn)
+	}
+}
+
+// handleCommand processes commands from the stat collector
+func handleCommand(conn net.Conn) {
+	defer conn.Close()
+
+	buffer := make([]byte, 1024)
+	n, err := conn.Read(buffer)
+	if err != nil {
+		fmt.Printf("VM1: Failed to read command: %v\n", err)
+		return
+	}
+
+	var command map[string]interface{}
+	err = json.Unmarshal(buffer[:n], &command)
+	if err != nil {
+		fmt.Printf("VM1: Failed to parse command: %v\n", err)
+		return
+	}
+
+	if commandType, exists := command["type"]; exists && commandType == "start_gossiping" {
+		runNumber := int(command["run"].(float64))
+		fmt.Printf("VM1: Received start gossiping command for run %d\n", runNumber)
+
+		// Send acknowledgment
+		response := fmt.Sprintf("VM1 starting gossip for run %d", runNumber)
+		conn.Write([]byte(response))
+
+		// Execute the gossip sequence
+		go executeGossipSequence(runNumber)
+	} else if commandType == "clear_blockchain" {
+		runNumber := int(command["run"].(float64))
+		fmt.Printf("VM1: Received clear blockchain command for run %d\n", runNumber)
+
+		// Clear VM1's own blockchain
+		err := clearBlockchain()
+		if err != nil {
+			response := fmt.Sprintf("VM1 failed to clear blockchain: %v", err)
+			conn.Write([]byte(response))
+			return
+		}
+
+		// Send gossip message to all nodes to clear their blockchains
+		fmt.Printf("VM1: Sending clear blockchain gossip to all nodes...\n")
+		globalGossipNet.GossipMessage("clear_blockchain", "broadcast", fmt.Sprintf("Clear blockchain for run %d", runNumber), 1, globalRoomID, "")
+
+		response := fmt.Sprintf("VM1 blockchain cleared and clear command gossiped to all nodes for run %d", runNumber)
+		conn.Write([]byte(response))
+	} else {
+		fmt.Printf("VM1: Unknown command type: %v\n", commandType)
+	}
+}
+
+// executeGossipSequence sends the 3 gossip messages with delays
+func executeGossipSequence(runNumber int) {
+	if globalGossipNet == nil {
+		fmt.Println("VM1: Error: Gossip network not initialized")
+		return
+	}
+
+	fmt.Printf("VM1: Executing gossip sequence for run %d\n", runNumber)
+
+	// Message 1
+	globalGossipNet.GossipMessage("chat", "broadcast", fmt.Sprintf("Consensus Test Message 1 (Run %d)", runNumber), 1, globalRoomID, "")
+	fmt.Println("VM1: Sent message 1")
+	time.Sleep(time.Second * 1)
+
+	// Message 2
+	globalGossipNet.GossipMessage("chat", "broadcast", fmt.Sprintf("Consensus Test Message 2 (Run %d)", runNumber), 1, globalRoomID, "")
+	fmt.Println("VM1: Sent message 2")
+	time.Sleep(time.Second * 1)
+
+	// Message 3
+	globalGossipNet.GossipMessage("chat", "broadcast", fmt.Sprintf("Consensus Test Message 3 (Run %d)", runNumber), 1, globalRoomID, "")
+	fmt.Println("VM1: Sent message 3")
+	fmt.Printf("VM1: All 3 messages sent for run %d, waiting for consensus...\n", runNumber)
+}
+
+// clearBlockchain clears the blockchain file for the current room
+func clearBlockchain() error {
+	blockchainPath := fmt.Sprintf("data/%s/blockchain.json", globalRoomID)
+
+	// Read the current blockchain to preserve genesis and peer blocks
+	blockchainData, err := os.ReadFile(blockchainPath)
+	if err != nil {
+		return fmt.Errorf("failed to read blockchain file: %v", err)
+	}
+
+	// Parse the blockchain to find and keep only genesis and peer blocks
+	var blockchain []map[string]interface{}
+	if err := json.Unmarshal(blockchainData, &blockchain); err != nil {
+		return fmt.Errorf("failed to parse blockchain: %v", err)
+	}
+
+	// Keep only the first 5 blocks (genesis + 4 peer additions)
+	// Assuming the first 5 blocks are genesis and peer setup
+	var preservedBlocks []map[string]interface{}
+	for i := 0; i < len(blockchain) && i < 5; i++ {
+		preservedBlocks = append(preservedBlocks, blockchain[i])
+	}
+
+	// Write back the preserved blocks
+	preservedData, err := json.MarshalIndent(preservedBlocks, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal preserved blocks: %v", err)
+	}
+
+	err = os.WriteFile(blockchainPath, preservedData, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write preserved blockchain: %v", err)
+	}
+
+	fmt.Printf("VM1: Blockchain cleared - kept genesis and peer blocks, removed chat messages\n")
+	return nil
 }
