@@ -1125,24 +1125,91 @@ func PublicKeyToNodeID(hexStr string) uint64 {
 func clearBlockchainForRoom(roomID string) error {
 	blockchainPath := fmt.Sprintf("data/%s/blockchain.json", roomID)
 
+	fmt.Printf("🧹 Clearing blockchain for room: %s\n", roomID)
+	fmt.Printf("📁 Blockchain path: %s\n", blockchainPath)
+
+	// Check if file exists first
+	if _, err := os.Stat(blockchainPath); os.IsNotExist(err) {
+		fmt.Printf("⚠️ Blockchain file doesn't exist, creating fresh one\n")
+		// Create a minimal blockchain with just genesis block
+		minimalBlockchain := `[
+  {
+    "index": 0,
+    "timestamp": "2025-08-24T00:00:00Z",
+    "data": "Genesis Block",
+    "previousHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+]`
+		err := os.WriteFile(blockchainPath, []byte(minimalBlockchain), 0644)
+		if err != nil {
+			return fmt.Errorf("failed to create fresh blockchain: %v", err)
+		}
+		fmt.Printf("✅ Created fresh blockchain with genesis block\n")
+		return nil
+	}
+
 	// Read the current blockchain to preserve genesis and peer blocks
 	blockchainData, err := os.ReadFile(blockchainPath)
 	if err != nil {
 		return fmt.Errorf("failed to read blockchain file: %v", err)
 	}
 
+	fmt.Printf("📖 Read blockchain data: %d bytes\n", len(blockchainData))
+
+	// Check if file is empty
+	if len(blockchainData) == 0 {
+		fmt.Printf("⚠️ Blockchain file is empty, creating fresh one\n")
+		minimalBlockchain := `[
+  {
+    "index": 0,
+    "timestamp": "2025-08-24T00:00:00Z",
+    "data": "Genesis Block",
+    "previousHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+]`
+		err := os.WriteFile(blockchainPath, []byte(minimalBlockchain), 0644)
+		if err != nil {
+			return fmt.Errorf("failed to create fresh blockchain: %v", err)
+		}
+		fmt.Printf("✅ Created fresh blockchain with genesis block\n")
+		return nil
+	}
+
 	// Parse the blockchain to find and keep only genesis and peer blocks
 	var blockchain []map[string]interface{}
 	if err := json.Unmarshal(blockchainData, &blockchain); err != nil {
-		return fmt.Errorf("failed to parse blockchain: %v", err)
+		fmt.Printf("⚠️ Failed to parse blockchain JSON, creating fresh one: %v\n", err)
+		// Create a minimal blockchain with just genesis block
+		minimalBlockchain := `[
+  {
+    "index": 0,
+    "timestamp": "2025-08-24T00:00:00Z",
+    "data": "Genesis Block",
+    "previousHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+]`
+		err := os.WriteFile(blockchainPath, []byte(minimalBlockchain), 0644)
+		if err != nil {
+			return fmt.Errorf("failed to create fresh blockchain: %v", err)
+		}
+		fmt.Printf("✅ Created fresh blockchain with genesis block\n")
+		return nil
 	}
+
+	fmt.Printf("🔍 Parsed blockchain: %d total blocks\n", len(blockchain))
 
 	// Keep only the first 5 blocks (genesis + 4 peer additions)
 	// Assuming the first 5 blocks are genesis and peer setup
 	var preservedBlocks []map[string]interface{}
-	for i := 0; i < len(blockchain) && i < 5; i++ {
+	preserveCount := min(5, len(blockchain))
+	for i := 0; i < preserveCount; i++ {
 		preservedBlocks = append(preservedBlocks, blockchain[i])
 	}
+
+	fmt.Printf("💾 Preserving %d blocks (genesis + peers)\n", len(preservedBlocks))
 
 	// Write back the preserved blocks
 	preservedData, err := json.MarshalIndent(preservedBlocks, "", "  ")
@@ -1150,11 +1217,13 @@ func clearBlockchainForRoom(roomID string) error {
 		return fmt.Errorf("failed to marshal preserved blocks: %v", err)
 	}
 
+	fmt.Printf("📝 Writing preserved blockchain: %d bytes\n", len(preservedData))
+
 	err = os.WriteFile(blockchainPath, preservedData, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write preserved blockchain: %v", err)
 	}
 
-	fmt.Printf("Blockchain cleared - kept genesis and peer blocks, removed chat messages for room %s\n", roomID)
+	fmt.Printf("✅ Blockchain cleared - kept genesis and peer blocks, removed chat messages for room %s\n", roomID)
 	return nil
 }

@@ -264,6 +264,10 @@ func processMessageForConsensus(msg string, nodeID string) {
 
 		fmt.Printf("Run %d: Consensus Integrity: %.2f%%, ASR: %.2f%%\n", currentRun, integrityScore*100, asr*100)
 
+		// Wait a bit to ensure all blockchains are properly sent before clearing
+		fmt.Printf("⏳ Waiting 5 seconds to ensure all blockchains are sent...\n")
+		time.Sleep(5 * time.Second)
+
 		// Clear blockchains on all VMs before next run
 		fmt.Printf("🧹 Clearing blockchains on all VMs for next run...\n")
 		clearBlockchainsOnAllVMs()
@@ -499,16 +503,16 @@ func sendStartGossipingCommand() {
 
 // clearBlockchainsOnAllVMs sends clear blockchain commands to all VMs
 func clearBlockchainsOnAllVMs() {
-	// VM addresses (assuming they're all running on localhost with different ports)
+	fmt.Printf("🚨 SENDING CLEAR BLOCKCHAIN COMMAND for run %d\n", currentRun)
+	fmt.Printf("⏰ Current time: %s\n", time.Now().Format("15:04:05.000"))
+
+	// Only VM1 has a command listener, so we only send to VM1
+	// VM1 will then gossip the clear command to other VMs
 	vmAddresses := map[string]string{
-		"VM1": "localhost:3001", // Command listener port
-		"VM2": "localhost:3002", // Assuming VM2 listens on 3002
-		"VM3": "localhost:3003", // Assuming VM3 listens on 3003
-		"VM4": "localhost:3004", // Assuming VM4 listens on 3004
+		"VM1": "localhost:3001", // Only VM1's command listener
 	}
 
 	var wg sync.WaitGroup
-
 	for vmName, address := range vmAddresses {
 		wg.Add(1)
 		go func(name, addr string) {
@@ -516,9 +520,8 @@ func clearBlockchainsOnAllVMs() {
 			sendClearBlockchainCommand(name, addr)
 		}(vmName, address)
 	}
-
 	wg.Wait()
-	fmt.Println("🧹 Blockchain clear commands sent to all VMs")
+	fmt.Println("🧹 Blockchain clear commands sent to VM1 (will gossip to others)")
 }
 
 // sendClearBlockchainCommand sends a clear blockchain command to a specific VM
