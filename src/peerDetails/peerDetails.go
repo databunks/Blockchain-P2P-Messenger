@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Peer struct {
@@ -23,12 +24,6 @@ func init() {
 
 // AddPeer adds a new peer to a specific room
 func AddPeer(publicKey string, ip string, isAdmin bool, roomID string) error {
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("⚠️  Recovered from panic in AddPeer: %v\n", r)
-		}
-	}()
-
 	fmt.Printf("Adding peer: %s, %s, %v to room %s\n", publicKey, ip, isAdmin, roomID)
 
 	peer := Peer{
@@ -39,6 +34,9 @@ func AddPeer(publicKey string, ip string, isAdmin bool, roomID string) error {
 
 	// Get Previous Peers
 	peers[roomID] = GetPeersInRoom(roomID)
+
+	// Small delay to prevent race condition
+	time.Sleep(10 * time.Millisecond)
 
 	// Add to memory
 	peers[roomID] = append(peers[roomID], peer)
@@ -65,12 +63,6 @@ func AddPeer(publicKey string, ip string, isAdmin bool, roomID string) error {
 
 // GetPeersInRoom loads the latest peer list for a specific room from the blockchain
 func GetPeersInRoom(roomID string) []Peer {
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("⚠️  Recovered from panic in GetPeersInRoom: %v\n", r)
-		}
-	}()
-
 	current_blockchain := blockchain.GetBlockchain(roomID)
 
 	for i := len(current_blockchain) - 1; i >= 0; i-- {
@@ -98,6 +90,8 @@ func GetPeersInRoom(roomID string) []Peer {
 			}
 
 			// Update in-memory cache and return the peer list
+			// Small delay to prevent race condition
+			time.Sleep(10 * time.Millisecond)
 			peers[roomID] = roomPeers
 			return roomPeers
 		}
@@ -110,12 +104,6 @@ func GetPeersInRoom(roomID string) []Peer {
 
 // RemovePeer removes a peer by public key from a specific room
 func RemovePeer(publicKey string, roomID string) error {
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("⚠️  Recovered from panic in RemovePeer: %v\n", r)
-		}
-	}()
-
 	fmt.Printf("Removing peer with public key: %s from room: %s\n", publicKey, roomID)
 
 	// Load latest peers from blockchain
@@ -137,6 +125,8 @@ func RemovePeer(publicKey string, roomID string) error {
 	}
 
 	// Update memory
+	// Small delay to prevent race condition
+	time.Sleep(10 * time.Millisecond)
 	peers[roomID] = newPeerList
 	fmt.Printf("Updated peer list after removal: %+v\n", newPeerList)
 
