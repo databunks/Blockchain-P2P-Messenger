@@ -655,7 +655,6 @@ func (gn *GossipNetwork) isInRoom(publicKey string) bool {
 }
 
 func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
-
 	// Handle different message types
 	switch msg.Type {
 	case "chat":
