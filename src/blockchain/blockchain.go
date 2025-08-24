@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 )
 
@@ -23,7 +22,6 @@ type Block struct {
 
 // Blockchain is a series of validated Blocks
 var blockchains map[string][]Block // roomID -> []Block
-var blockchainMutex sync.RWMutex
 
 func init() {
 	blockchains = make(map[string][]Block)
@@ -75,9 +73,6 @@ func IsBlockValid(newBlock, oldBlock Block) bool {
 
 // ReplaceChain replaces the current chain with a new one if the new one is longer
 func ReplaceChain(newBlocks []Block, roomID string) error {
-	blockchainMutex.Lock()
-	defer blockchainMutex.Unlock()
-
 	if len(newBlocks) > len(blockchains[roomID]) {
 		blockchains[roomID] = newBlocks
 		return SaveBlockchainToFile(roomID)
@@ -87,9 +82,6 @@ func ReplaceChain(newBlocks []Block, roomID string) error {
 
 // SaveBlockchainToFile saves the current blockchain to a file
 func SaveBlockchainToFile(roomID string) error {
-	blockchainMutex.RLock()
-	defer blockchainMutex.RUnlock()
-
 	roomDir := filepath.Join(dataDir, roomID)
 	if err := os.MkdirAll(roomDir, 0755); err != nil {
 		return err
@@ -121,9 +113,6 @@ func GenerateGenesisBlock() Block {
 
 // LoadBlockchainFromFile loads the blockchain from a file
 func LoadBlockchainFromFile(roomID string) error {
-	blockchainMutex.Lock()
-	defer blockchainMutex.Unlock()
-
 	roomDir := filepath.Join(dataDir, roomID)
 	if err := os.MkdirAll(roomDir, 0755); err != nil {
 		return err
@@ -151,9 +140,6 @@ func LoadBlockchainFromFile(roomID string) error {
 
 // AddBlock adds a new block with the given data to the blockchain
 func AddBlock(data string, roomID string) error {
-	blockchainMutex.Lock()
-	defer blockchainMutex.Unlock()
-
 	if err := LoadBlockchainFromFile(roomID); err != nil {
 		return err
 	}
@@ -170,9 +156,6 @@ func AddBlock(data string, roomID string) error {
 
 // GetBlockchain returns the blockchain for a specific room
 func GetBlockchain(roomID string) []Block {
-	blockchainMutex.RLock()
-	defer blockchainMutex.RUnlock()
-
 	LoadBlockchainFromFile(roomID)
 	if chain, exists := blockchains[roomID]; exists {
 		return chain

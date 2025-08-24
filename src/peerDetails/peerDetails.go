@@ -55,7 +55,6 @@ func AddPeer(publicKey string, ip string, isAdmin bool, roomID string) error {
 	blockchain.AddBlock(fmt.Sprintf("PEER_ADDED$%s", peerList), roomID)
 
 	return nil
-	// return savePeersToFile(roomID)
 }
 
 // GetPeersInRoom loads the latest peer list for a specific room from the blockchain
@@ -86,14 +85,8 @@ func GetPeersInRoom(roomID string) []Peer {
 				}
 			}
 
-			// if err := json.Unmarshal([]byte(data[1]), &roomPeers); err != nil {
-
-			// 	fmt.Println("Failed to unmarshal peer list:", err)
-			// 	break
-			// }
-
 			// Update in-memory cache and return the peer list
-			// peers[roomID] = roomPeers
+			peers[roomID] = roomPeers
 			return roomPeers
 		}
 	}
