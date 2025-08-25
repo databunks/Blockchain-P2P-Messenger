@@ -1304,6 +1304,10 @@ func sendGossipMessageReceipt(senderPublicKey string, roomID string) {
 	peers := peerDetails.GetPeersInRoom(roomID)
 	statCollectorPublicKey := "0000005ed266dc58d687b6ed84af4b4657162033cf379e9d8299bba941ae66e0" // VM1's public key (stat collector)
 
+	// Get current node's public key (the node that received the message and is sending the receipt)
+	currentNodeInfo := GetYggdrasilNodeInfo()
+	currentNodePublicKey := currentNodeInfo.Key
+
 	for _, peer := range peers {
 		if peer.PublicKey == statCollectorPublicKey {
 			// Dial stat collector
@@ -1318,8 +1322,8 @@ func sendGossipMessageReceipt(senderPublicKey string, roomID string) {
 			}
 			defer conn.Close()
 
-			// Create message receipt with sender's public key to make it unique
-			receiptMessage := fmt.Sprintf("Received Censored Message %d from %s", time.Now().Unix(), senderPublicKey)
+			// Create message receipt with current node's public key (the node that received the message)
+			receiptMessage := fmt.Sprintf("Received Censored Message %d from %s", time.Now().Unix(), currentNodePublicKey)
 
 			// Send message receipt
 			_, err = conn.Write([]byte(receiptMessage))
