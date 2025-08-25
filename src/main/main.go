@@ -2,7 +2,7 @@ package main
 
 import (
 	"blockchain-p2p-messenger/src/consensus"
-	consensustestsVM1 "blockchain-p2p-messenger/src/simulations/consensus_tests/VM1"
+	gossip_test_VM1 "blockchain-p2p-messenger/src/simulations/gossip_tests/VM1"
 	"encoding/gob"
 )
 
@@ -80,8 +80,8 @@ func main() {
 
 	
 
-	consensustestsVM1.RunConsensusTestCase1VM1()
-	// gossip_test_VM1.RunGossipTestCaseVM1()
+	// consensustestsVM1.RunConsensusTestCase1VM1()
+	gossip_test_VM1.RunGossipTestCaseVM1()
 
 
 	

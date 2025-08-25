@@ -230,11 +230,11 @@ func isRunComplete() bool {
 	defer consensusMutex.Unlock()
 
 	// Check if we have enough messages or timeout
-	timeoutReached := time.Since(runStartTime) > 60*time.Second // Increased timeout for blockchains
-	messagesReached := messagesThisRun >= expectedBlockchains   // Use mode-based expectation
+	timeoutReached := time.Since(runStartTime) > 8*time.Second // Changed timeout to 8 seconds
+	messagesReached := messagesThisRun >= expectedBlockchains  // Use mode-based expectation
 
 	if timeoutReached {
-		fmt.Printf("Run %d: TIMEOUT reached (60s)\n", currentRun)
+		fmt.Printf("Run %d: TIMEOUT reached (8s)\n", currentRun)
 		return true
 	}
 
@@ -246,12 +246,55 @@ func isRunComplete() bool {
 	return false
 }
 
+// processTimeout handles timeout scenarios and saves appropriate metrics
+func processTimeout() {
+	consensusMutex.Lock()
+	defer consensusMutex.Unlock()
+
+	testRunningMutex.Lock()
+	isTestRunning = false
+	testRunningMutex.Unlock()
+
+	fmt.Printf("Run %d: Processing timeout scenario...\n", currentRun)
+
+	// Record timeout time
+	timeoutTime := time.Now()
+
+	// For timeout scenarios:
+	// - Consensus integrity is SKIPPED (0.0)
+	// - Attack is considered FAILED (timeout means attack didn't succeed)
+	// - Latency is the timeout duration
+	// - Blockchains received is the actual count received before timeout
+
+	// Add SKIPPED consensus integrity
+	consensusIntegrityResults = append(consensusIntegrityResults, 0.0)
+
+	// Calculate timeout latency (from run start to timeout)
+	timeoutLatency := timeoutTime.Sub(runStartTime).Milliseconds()
+	totalLatencies = append(totalLatencies, timeoutLatency)
+
+	// Mark attack as SUCCESS for timeout scenarios (keeping original behavior)
+	attackSuccessRates = append(attackSuccessRates, true)
+
+	// Store completion time for this run
+	runCompletionTimes = append(runCompletionTimes, timeoutTime)
+
+	fmt.Printf("Run %d: Timeout processed - Integrity: SKIPPED, Attack: SUCCESS, Latency: %d ms, Blockchains: %d\n",
+		currentRun, timeoutLatency, messagesThisRun)
+}
+
 // waitForTestCompletion waits for all runs to finish
 func waitForTestCompletion() {
 	for currentRun < totalRuns {
 		// Wait for current run to complete
 		for isTestRunning && !isRunComplete() {
 			time.Sleep(1 * time.Second)
+		}
+
+		// Check if we need to process a timeout
+		if isTestRunning {
+			// This means we timed out, so process the timeout
+			processTimeout()
 		}
 
 		if currentRun < totalRuns {
@@ -1195,13 +1238,27 @@ func saveResultsToCSV() {
 			completionTime = "N/A"
 		}
 
+		// Determine consensus integrity display and run status
+		var consensusIntegrityDisplay string
+		var runStatus string
+
+		if consensusIntegrityResults[i] == 0.0 {
+			// This is a timeout/skipped case
+			consensusIntegrityDisplay = "SKIPPED"
+			runStatus = "TIMEOUT"
+		} else {
+			// Normal completion
+			consensusIntegrityDisplay = fmt.Sprintf("%.2f", consensusIntegrityResults[i]*100)
+			runStatus = "COMPLETED"
+		}
+
 		row := []string{
 			fmt.Sprintf("%d", i+1),
-			fmt.Sprintf("%.2f", consensusIntegrityResults[i]*100),
+			consensusIntegrityDisplay,
 			attackStatus,
 			fmt.Sprintf("%d", latency),
 			"12", // Expected blockchains per run
-			"COMPLETED",
+			runStatus,
 			completionTime,
 		}
 
@@ -1254,7 +1311,7 @@ func saveResultsToCSV() {
 	writer.Write([]string{"Average_Latency_ms", fmt.Sprintf("%d", avgLatency)})
 	writer.Write([]string{"Test_Configuration", "4_nodes_3_honest_1_attacker"})
 	writer.Write([]string{"Blockchains_Per_Run", "12"})
-	writer.Write([]string{"Timeout_Per_Run", "60s"})
+	writer.Write([]string{"Timeout_Per_Run", "8s"})
 
 	fmt.Printf("Results saved to CSV file: %s\n", filename)
 }

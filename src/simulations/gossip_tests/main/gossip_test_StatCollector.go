@@ -23,8 +23,8 @@ var lastMessageReceivedTime time.Time // Time when last message was received
 
 // Gossip mode toggle
 var gossipMode string = "attack" // "control" for normal operation, "attack" for attack scenario
-var expectedNodes int = 4        // Total number of nodes in the network
-var expectedReachability int = 4 // Expected number of nodes to receive the message
+var expectedNodes int = 4         // Total number of nodes in the network
+var expectedReachability int = 3  // Expected number of nodes to receive the message
 
 // Gossip testing mutexes
 var gossipMutex sync.Mutex
@@ -105,11 +105,21 @@ func initializeGossipTest() {
 	fmt.Printf("Total Nodes: %d\n", expectedNodes)
 	fmt.Printf("Honest Nodes: %d\n", len(honestNodes))
 	for i, key := range honestNodes {
-		fmt.Printf("  Honest %d: %s\n", i+1, key[:16]+"...")
+		// Safely truncate key for display
+		displayKey := key
+		if len(key) > 16 {
+			displayKey = key[:16] + "..."
+		}
+		fmt.Printf("  Honest %d: %s\n", i+1, displayKey)
 	}
 	fmt.Printf("Attacker Nodes: %d\n", len(attackerNodes))
 	for i, key := range attackerNodes {
-		fmt.Printf("  Attacker %d: %s\n", i+1, key[:16]+"...")
+		// Safely truncate key for display
+		displayKey := key
+		if len(key) > 16 {
+			displayKey = key[:16] + "..."
+		}
+		fmt.Printf("  Attacker %d: %s\n", i+1, displayKey)
 	}
 	fmt.Printf("Expected Reachability: %d nodes\n", expectedReachability)
 	fmt.Println("VM1: Sends censored message")
@@ -122,10 +132,10 @@ func setGossipMode(mode string) {
 	gossipMode = mode
 	if mode == "attack" {
 		expectedReachability = 3 // Expect only 3 nodes to receive message (attack scenario)
-		fmt.Printf("🎯 Attack Mode: Expecting %d/%d nodes to receive message\n", expectedReachability, expectedNodes)
+		fmt.Printf("Attack Mode: Expecting %d/%d nodes to receive message\n", expectedReachability, expectedNodes)
 	} else {
 		expectedReachability = 4 // Expect all 4 nodes to receive message (control scenario)
-		fmt.Printf("🎯 Control Mode: Expecting %d/%d nodes to receive message\n", expectedReachability, expectedNodes)
+		fmt.Printf("Control Mode: Expecting %d/%d nodes to receive message\n", expectedReachability, expectedNodes)
 	}
 }
 
@@ -158,12 +168,12 @@ func startNewRun() {
 	messagesSentMutex.Unlock()
 
 	// Verify complete run isolation
-	fmt.Printf("🔍 Verifying complete run isolation...\n")
+	fmt.Printf("Verifying complete run isolation...\n")
 	if len(nodeMessageReceipts) > 0 {
-		fmt.Printf("⚠️  WARNING: Old message receipts detected! Clearing again...\n")
+		fmt.Printf("WARNING: Old message receipts detected! Clearing again...\n")
 		nodeMessageReceipts = make(map[string]bool)
 	}
-	fmt.Printf("✅ Run isolation verified - clean slate for run %d\n", currentRun)
+	fmt.Printf("Run isolation verified - clean slate for run %d\n", currentRun)
 
 	fmt.Printf("\n=== STARTING RUN %d/%d ===\n", currentRun, totalRuns)
 	fmt.Printf("Expected: %d nodes to receive message (Mode: %s)\n", expectedReachability, gossipMode)
@@ -183,10 +193,18 @@ func sendStartGossipingCommand() {
 
 	// Set message initiation time when we send the command
 	messageInitiationTime = time.Now()
-	fmt.Printf("🎯 Message initiation started at: %s\n", messageInitiationTime.Format("15:04:05.000"))
+	fmt.Printf("Message initiation started at: %s\n", messageInitiationTime.Format("15:04:05.000"))
 
-	// Send command to VM1 on localhost:3001
-	go sendStartCommandToNode("localhost", 3001, "SEND_GOSSIP_MESSAGE:Official group chat message!")
+	// Send different commands based on gossip mode
+	if gossipMode == "control" {
+		// Control mode: Send limited message to 2 nodes to test normal gossip behavior
+		fmt.Printf("Control Mode: Sending limited message to 1 node\n")
+		go sendStartCommandToNode("localhost", 3001, "SEND_LIMITED_MESSAGE:3")
+	} else {
+		// Attack mode: Send regular gossip message to all nodes
+		fmt.Printf("Attack Mode: Sending regular gossip message to all nodes\n")
+		go sendStartCommandToNode("localhost", 3001, "SEND_GOSSIP_MESSAGE:Official group chat message!")
+	}
 }
 
 // sendStartCommandToNode sends a start command to a specific node
@@ -208,7 +226,7 @@ func sendStartCommandToNode(nodeIP string, port int, command string) {
 		return
 	}
 
-	fmt.Printf("✅ Start command sent to %s\n", address)
+	fmt.Printf("Start command sent to %s\n", address)
 }
 
 // isRunComplete checks if the current run is complete
@@ -258,7 +276,7 @@ func recordRunMetrics(completed bool) {
 			fmt.Printf("Run %d: Reachability: %.1f%% < 100%% → 🚨 ATTACK SUCCESSFUL (Latency: %d ms, Overhead: %d msgs)\n",
 				currentRun, reachability*100, latency, overhead)
 		} else {
-			fmt.Printf("Run %d: Reachability: %.1f%% >= 100%% → ✅ ATTACK FAILED (Latency: %d ms, Overhead: %d msgs)\n",
+			fmt.Printf("Run %d: Reachability: %.1f%% >= 100%% - ATTACK FAILED (Latency: %d ms, Overhead: %d msgs)\n",
 				currentRun, reachability*100, latency, overhead)
 		}
 	} else {
@@ -271,12 +289,12 @@ func recordRunMetrics(completed bool) {
 func waitForTestCompletion() {
 	for currentRun < totalRuns {
 		// Wait for current run to complete with timeout (increased to account for cleanup)
-		timeout := time.After(5 * time.Second) // 5 second timeout per run
+		timeout := time.After(3 * time.Second) // 3 second timeout per run
 		runCompleted := false
 		for isTestRunning && !isRunComplete() {
 			select {
 			case <-timeout:
-				fmt.Printf("⚠️  Run %d timed out after 5 seconds, moving to next run\n", currentRun)
+				fmt.Printf("Run %d timed out after 3 seconds, moving to next run\n", currentRun)
 				testRunningMutex.Lock()
 				isTestRunning = false
 				testRunningMutex.Unlock()
@@ -305,36 +323,41 @@ func waitForTestCompletion() {
 		receiptCount := len(nodeMessageReceipts)
 		receiptKeys := make([]string, 0, len(nodeMessageReceipts))
 		for key := range nodeMessageReceipts {
-			receiptKeys = append(receiptKeys, key[:16]+"...")
+			// Safely truncate key for display
+			displayKey := key
+			if len(key) > 16 {
+				displayKey = key[:16] + "..."
+			}
+			receiptKeys = append(receiptKeys, displayKey)
 		}
 		nodeMessageReceiptsMutex.Unlock()
-		fmt.Printf("🔍 DEBUG: Run %d - Receipts: %d/%d, Completed: %t, TestRunning: %t, Keys: %v\n",
+		fmt.Printf("DEBUG: Run %d - Receipts: %d/%d, Completed: %t, TestRunning: %t, Keys: %v\n",
 			currentRun, receiptCount, expectedReachability, runCompleted, isTestRunning, receiptKeys)
 
 		// Record metrics for this run (whether completed or timed out)
 		recordRunMetrics(runCompleted)
 
 		// Clear message tracking on all VMs after recording metrics
-		fmt.Printf("🧹 Clearing message tracking on all VMs for next run...\n")
+		fmt.Printf("Clearing message tracking on all VMs for next run...\n")
 		clearStartTime := time.Now()
 		clearMessagesOnAllVMs()
 		clearDuration := time.Since(clearStartTime).Milliseconds()
-		fmt.Printf("⏱️  Message clearing completed in %d ms\n", clearDuration)
+		fmt.Printf("Message clearing completed in %d ms\n", clearDuration)
 
 		// Debug: Check if any receipts came in during clearing
 		nodeMessageReceiptsMutex.Lock()
 		receiptsAfterClear := len(nodeMessageReceipts)
 		nodeMessageReceiptsMutex.Unlock()
 		if receiptsAfterClear > 0 {
-			fmt.Printf("⚠️  WARNING: %d receipts received during clearing phase\n", receiptsAfterClear)
+			fmt.Printf("WARNING: %d receipts received during clearing phase\n", receiptsAfterClear)
 		}
 
 		// Wait briefly for cleanup to prevent cross-run contamination
-		fmt.Printf("⏳ Waiting 3 seconds for message cleanup and isolation...\n")
+		fmt.Printf("Waiting 3 seconds for message cleanup and isolation...\n")
 		time.Sleep(3 * time.Second)
 
 		// Brief barrier to ensure complete isolation
-		fmt.Printf("🚧 Ensuring complete run isolation...\n")
+		fmt.Printf("Ensuring complete run isolation...\n")
 		time.Sleep(3 * time.Second)
 
 		if currentRun < totalRuns {
@@ -356,7 +379,12 @@ func processMessageForGossip(msg string, nodeID string) {
 
 	// Allow processing messages even if test is not running (for cleanup phase receipts)
 	if !testRunning {
-		fmt.Printf("📨 Late receipt received from %s (test not running, but counting anyway)\n", nodeID[:16]+"...")
+		// Safely truncate nodeID for display
+		displayID := nodeID
+		if len(nodeID) > 16 {
+			displayID = nodeID[:16] + "..."
+		}
+		fmt.Printf("Late receipt received from %s (test not running, but counting anyway)\n", displayID)
 	}
 
 	// Increment message count for current run
@@ -387,7 +415,7 @@ func processMessageForGossip(msg string, nodeID string) {
 		fmt.Printf("Run %d: All %d messages received, run completed successfully\n", currentRun, expectedReachability)
 
 		// Wait briefly to ensure all messages are properly sent
-		fmt.Printf("⏳ Waiting 3 seconds to ensure all messages are sent...\n")
+		fmt.Printf("Waiting 3 seconds to ensure all messages are sent...\n")
 		time.Sleep(3 * time.Second)
 	}
 }
@@ -452,7 +480,7 @@ func sendClearCommandToNode(nodeIP string, port int, command string) {
 		return
 	}
 
-	fmt.Printf("✅ Clear command sent to %s\n", address)
+	fmt.Printf("Clear command sent to %s\n", address)
 }
 
 // displayFinalResults shows the overall gossip testing results
@@ -496,7 +524,7 @@ func displayFinalResults() {
 		fmt.Printf("   - Reachability below 100%% indicates message censorship\n")
 		fmt.Printf("   - Attack was successful in %.1f%% of runs\n", attackSuccessRate)
 	} else {
-		fmt.Printf("\n✅ OVERALL RESULT: DEFENSE SUCCESS\n")
+		fmt.Printf("\nOVERALL RESULT: DEFENSE SUCCESS\n")
 		fmt.Printf("   - 100%% reachability achieved\n")
 		fmt.Printf("   - Message censorship prevented\n")
 	}
@@ -552,7 +580,7 @@ func saveResultsToCSV() {
 	}
 	writer.Write(summaryRow)
 
-	fmt.Printf("✅ Results saved to %s\n", filename)
+	fmt.Printf("Results saved to %s\n", filename)
 }
 
 func ListenOnPort(port string) {
@@ -630,7 +658,7 @@ func processGossipMessage(msg string) {
 	} else if strings.Contains(msg, "GOSSIP_START") {
 		// Gossip test started
 		messageInitiationTime = time.Now()
-		fmt.Printf("🎯 Gossip test initiated at: %s\n", messageInitiationTime.Format("15:04:05.000"))
+		fmt.Printf("Gossip test initiated at: %s\n", messageInitiationTime.Format("15:04:05.000"))
 	}
 }
 

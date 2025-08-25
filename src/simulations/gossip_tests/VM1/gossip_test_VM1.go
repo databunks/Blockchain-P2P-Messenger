@@ -69,7 +69,7 @@ func RunGossipTestCaseVM1() {
 	noAckBlockchainSave := true
 	injectSpam := false
 	disableAckSending := false
-	forwardingFanout := 1 
+	forwardingFanout := 3
 
 	fmt.Printf("🚀 VM1: Initializing Gossip Test Case 1 (New Gossip Network)\n")
 	fmt.Printf("   Room ID: %s\n", roomID)
