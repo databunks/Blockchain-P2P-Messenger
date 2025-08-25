@@ -89,17 +89,13 @@ func GetPeersInRoom(roomID string) []Peer {
 				}
 			}
 
-			// Update in-memory cache and return the peer list
-			// Small delay to prevent race condition
-			time.Sleep(10 * time.Millisecond)
-			peers[roomID] = roomPeers
+			// Return the peer list without updating global map (prevents concurrent writes)
 			return roomPeers
 		}
 	}
 
 	// No peers found in blockchain for this room
-	peers[roomID] = []Peer{}
-	return peers[roomID]
+	return []Peer{}
 }
 
 // RemovePeer removes a peer by public key from a specific room
