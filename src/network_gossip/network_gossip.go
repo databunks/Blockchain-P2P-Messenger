@@ -1164,7 +1164,7 @@ func PublicKeyToNodeID(hexStr string) uint64 {
 
 // clearBlockchainForRoom clears the blockchain file for a specific room
 func clearBlockchainForRoom(roomID string) error {
-	blockchainPath := fmt.Sprintf("data/%s/blockchain.json", roomID)
+	blockchainPath := fmt.Sprintf("src/main/data/%s/blockchain.json", roomID)
 
 	fmt.Printf("🧹 Clearing blockchain for room: %s\n", roomID)
 
@@ -1221,4 +1221,21 @@ func clearBlockchainForRoom(roomID string) error {
 
 	fmt.Printf("✅ Blockchain cleared - kept genesis and peer blocks, removed chat messages for room %s\n", roomID)
 	return nil
+}
+
+// clearAllData clears all accumulated data structures for a fresh start
+func (gn *GossipNetwork) clearAllData() {
+	// Clear message processing queues
+	gn.msgsToProcess = make([]*GossipMessage, 0)
+
+	// Clear ACK tracking data
+	gn.processedAcks = make(map[string]map[string]bool)
+
+	// Clear pending ACKs
+	gn.pendingAcks = make(map[string][]GossipMessage)
+
+	// Clear blockchain state
+	gn.blockChainState = false
+
+	fmt.Printf("🧹 All data structures cleared for fresh start\n")
 }
