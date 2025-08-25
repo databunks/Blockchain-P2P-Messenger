@@ -50,7 +50,7 @@ func RunConsensusTestCase1VM4() {
 
 
 // Case 1: 1 attacker (1 / 4 Attacker nodes)
-func RunConsensusTestCase2VM3() {
+func RunConsensusTestCase2VM4() {
 	// Setup Peers
 
 	peerDetails.AddPeer(publicKey_VM1, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey_VM1), false, roomID)
