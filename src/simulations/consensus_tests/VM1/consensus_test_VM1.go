@@ -89,7 +89,31 @@ func RunConsensusTestCase1VM1() {
 
 // Case 2: 2 attackers (2 / 4 Attacker nodes)
 func RunConsensusTestCase2VM1() {
+	// Setup Peers
+	roomID := "room-xyz-987"
 
+	peerDetails.AddPeer(publicKey_VM1, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey_VM1), false, roomID)
+	peerDetails.AddPeer(publicKey2_VM2, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey2_VM2), false, roomID)
+	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), false, roomID)
+	peerDetails.AddPeer(publicKey4_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey4_VM4), false, roomID)
+
+	// Set this to true to enable spam injection mode
+	injectSpam := false
+	noAckBlockchainSave := false
+
+	gossipNet, err := gossipnetwork.InitializeGossipNetwork(roomID, 3000, false, true, noAckBlockchainSave, injectSpam)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	// Store the gossip network for later use
+	globalGossipNet = gossipNet
+	globalRoomID = roomID
+
+	fmt.Println("VM1: Network initialized, waiting for start gossiping command...")
+
+	// Start listening for commands from stat collector
+	go listenForCommands()
 }
 
 // listenForCommands listens for commands from the stat collector
