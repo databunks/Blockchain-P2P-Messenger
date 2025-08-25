@@ -68,7 +68,7 @@ func RunGossipTestControlVM2(runAsAttacker bool, fanout int){
 
 	if (runAsAttacker){
 		// Send message to specific nodes
-		network.SendMessage("Official group chat message!", roomID, 3000, "chat")
+		network.SendMessageToLimitedNodes("Official group chat message!", roomID, 3000, "chat", 2)
 	} else{
 		network.InitializeNetwork(roomID, true, true)
 	

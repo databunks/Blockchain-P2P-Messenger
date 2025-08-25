@@ -31,14 +31,14 @@ func RunGossipTestControlVM1() {
 	// Use the old network initialization
 	network.InitializeNetwork(roomID, true, true)
 
-	// Send a test message to limited nodes (example: send to only 2 nodes)
-	testMessage := "Hello from VM1 Control (Old Network)!"
-	err := network.SendMessageToLimitedNodes(testMessage, roomID, 3000, "chat", 2)
-	if err != nil {
-		fmt.Printf("❌ Error sending limited message: %v\n", err)
-	} else {
-		fmt.Printf("✅ Sent limited message to 2 nodes: %s\n", testMessage)
-	}
+	// // Send a test message to limited nodes (example: send to only 2 nodes)
+	// testMessage := "Hello from VM1 Control (Old Network)!"
+	// err := network.SendMessageToLimitedNodes(testMessage, roomID, 3000, "chat", 2)
+	// if err != nil {
+	// 	fmt.Printf("❌ Error sending limited message: %v\n", err)
+	// } else {
+	// 	fmt.Printf("✅ Sent limited message to 2 nodes: %s\n", testMessage)
+	// }
 
 	fmt.Println("✅ VM1: Gossip Test Control (Old Network) initialized successfully")
 }
