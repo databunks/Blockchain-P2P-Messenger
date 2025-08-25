@@ -29,6 +29,21 @@ func RunConsensusTestControlVM3() {
 	gossipnetwork.InitializeGossipNetwork(roomID, 3000, false, true, true, injectSpam)
 }
 
+func RunConsensusTestCase1VM3() {
+
+	// Setup Peers
+	peerDetails.AddPeer(publicKey_VM1, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey_VM1), false, roomID)
+	peerDetails.AddPeer(publicKey2_VM2, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey2_VM2), false, roomID)
+	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), false, roomID)
+	peerDetails.AddPeer(publicKey4_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey4_VM4), false, roomID)
+
+	// Set this to true to enable spam injection mode
+	injectSpam := false
+	noAckBlockchainSave := false
+
+	gossipnetwork.InitializeGossipNetwork(roomID, 3000, false, true, noAckBlockchainSave, injectSpam)	
+}
+
 
 // Case 1: 1 attacker (1 / 4 Attacker nodes)
 func RunConsensusTestCase2VM3() {
