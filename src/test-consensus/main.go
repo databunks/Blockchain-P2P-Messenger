@@ -44,22 +44,17 @@ func main() {
 	// Create a new instance of the HoneyBadger engine and pass in the config.
 	hb := hbbft.NewHoneyBadger(cfg)
 
-
-	go func () {
+	go func() {
 		hb.Start()
 
 		fmt.Println(hb.Messages())
 		//fmt.Println("EEEEEE")
-		
 
 	}()
 
-
 	hb.AddTransaction(newTransaction())
-	
-	time.Sleep(5233200 * time.Millisecond)
 
-	
+	time.Sleep(5233200 * time.Millisecond)
 
 	// for {
 	// 	// Give the protocol enough time to start processing and communicating.

@@ -427,13 +427,28 @@ func assessConsensusIntegrity() float64 {
 
 	// Now compare all hashes to see how many are consistent
 	if len(blockchainHashes) > 0 {
-		referenceHash := blockchainHashes[0]
-		fmt.Printf("   🎯 Using reference hash: %s...\n", referenceHash[:16])
+		// Find the majority consensus hash instead of using the first one
+		hashCounts := make(map[string]int)
+		for _, hash := range blockchainHashes {
+			hashCounts[hash]++
+		}
+
+		// Find the hash with the most occurrences (majority consensus)
+		var referenceHash string
+		maxCount := 0
+		for hash, count := range hashCounts {
+			if count > maxCount {
+				maxCount = count
+				referenceHash = hash
+			}
+		}
+
+		fmt.Printf("   🎯 Using majority consensus hash: %s... (appears %d times)\n", referenceHash[:16], maxCount)
 
 		for i, hash := range blockchainHashes {
 			if hash == referenceHash {
 				consistentNodes++
-				fmt.Printf("   ✅ Blockchain %d: Hash matches reference\n", i+1)
+				fmt.Printf("   ✅ Blockchain %d: Hash matches majority consensus\n", i+1)
 			} else {
 				fmt.Printf("   ❌ Blockchain %d: Hash mismatch - %s... vs %s...\n", i+1, hash[:16], referenceHash[:16])
 			}
