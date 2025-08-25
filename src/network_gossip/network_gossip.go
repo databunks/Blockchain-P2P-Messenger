@@ -110,6 +110,7 @@ type GossipNetwork struct {
 	isAttackerNode      bool
 	noAckBlockchainSave bool // When true, bypasses acknowledgment waiting and saves directly to blockchain
 	injectSpamMessages  bool // When true, injects spam messages before sending blockchain to stat collector
+	disableAckSending   bool // When true, this node will not send ACK messages back
 
 }
 
@@ -124,7 +125,7 @@ func init() {
 }
 
 // NewGossipNetwork creates a new integrated gossip network
-func NewGossipNetwork(nodeID uint64, roomID string, port uint64, threshold int, blockchainEnabled bool, attackerMode bool, noAckBlockchainSave bool, injectSpam bool) *GossipNetwork {
+func NewGossipNetwork(nodeID uint64, roomID string, port uint64, threshold int, blockchainEnabled bool, attackerMode bool, noAckBlockchainSave bool, injectSpam bool, disableAckSending bool) *GossipNetwork {
 	// Load private key for authentication
 	privateKey, publicKey := loadKeys()
 
@@ -146,6 +147,7 @@ func NewGossipNetwork(nodeID uint64, roomID string, port uint64, threshold int, 
 		isAttackerNode:      attackerMode,
 		noAckBlockchainSave: noAckBlockchainSave,
 		injectSpamMessages:  injectSpam,
+		disableAckSending:   disableAckSending,
 	}
 }
 
@@ -266,7 +268,9 @@ func (gn *GossipNetwork) authenticateMessage(msg GossipMessage, peer GossipNode)
 //   - toggleAttacker: Enable/disable attacker mode
 //   - toggleBlockchain: Enable/disable blockchain functionality
 //   - noAckBlockchainSave: When true, messages are saved directly to blockchain without waiting for acknowledgments
-func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool, toggleBlockchain bool, noAckBlockchainSave bool, injectSpam bool) (*GossipNetwork, error) {
+//   - injectSpam: When true, injects spam messages before sending blockchain to stat collector
+//   - disableAckSending: When true, this node will not send ACK messages back to other nodes
+func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool, toggleBlockchain bool, noAckBlockchainSave bool, injectSpam bool, disableAckSending bool) (*GossipNetwork, error) {
 	peerCount := len(peerDetails.GetPeersInRoom(roomID))
 	calculatedThreshold := int(float64(peerCount) * 0.66) // 66% of peers
 	if calculatedThreshold < 2 {
@@ -277,7 +281,7 @@ func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool, to
 	fmt.Println(PublicKeyToID(GetYggdrasilNodeInfo().Key))
 
 	// Create gossip network instance
-	gossipNet := NewGossipNetwork(PublicKeyToID(GetYggdrasilNodeInfo().Key), roomID, port, calculatedThreshold, toggleBlockchain, toggleAttacker, noAckBlockchainSave, injectSpam)
+	gossipNet := NewGossipNetwork(PublicKeyToID(GetYggdrasilNodeInfo().Key), roomID, port, calculatedThreshold, toggleBlockchain, toggleAttacker, noAckBlockchainSave, injectSpam, disableAckSending)
 
 	// Get Yggdrasil peers
 	yggdrasilPeers, err := gossipNet.GetYggdrasilPeers("unique")
@@ -676,10 +680,15 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 				network.SendBlockchainToStatCollector(msg.RoomID, 3002, gn.injectSpamMessages)
 			}
 		} else if gn.blockChainState {
-			// Send acknowledgment only when not in direct mode
-			senderID, _ := strconv.ParseUint(msg.Sender, 10, 64)
-			ackData := fmt.Sprintf("ACK for message %s from %s", msg.ID, msg.PublicKey)
-			gn.GossipMessage("ack", "broadcast", ackData, senderID, msg.RoomID, "")
+			// Send acknowledgment only when not in direct mode and ACK sending is not disabled
+			if !gn.disableAckSending {
+				senderID, _ := strconv.ParseUint(msg.Sender, 10, 64)
+				ackData := fmt.Sprintf("ACK for message %s from %s", msg.ID, msg.PublicKey)
+				gn.GossipMessage("ack", "broadcast", ackData, senderID, msg.RoomID, "")
+				fmt.Printf("📤 ACK sent for message %s (ACK sending enabled)\n", msg.ID)
+			} else {
+				fmt.Printf("🚫 ACK not sent for message %s (ACK sending disabled)\n", msg.ID)
+			}
 			gn.gossipMutex.Lock()
 			// Initialize acks received counter
 			msg.AcksReceived = 0

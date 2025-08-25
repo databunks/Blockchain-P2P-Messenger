@@ -38,10 +38,15 @@ func RunConsensusTestControlVM1() {
 	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), false, roomID)
 	peerDetails.AddPeer(publicKey4_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey4_VM4), false, roomID)
 
-	// Set this to true to enable spam injection mode
+	// Network configuration parameters
+	port := uint64(3000)
+	toggleAttacker := false
+	toggleBlockchain := true
+	noAckBlockchainSave := true
 	injectSpam := false
+	disableAckSending := false
 
-	gossipNet, err := gossipnetwork.InitializeGossipNetwork(roomID, 3000, false, true, true, injectSpam)
+	gossipNet, err := gossipnetwork.InitializeGossipNetwork(roomID, port, toggleAttacker, toggleBlockchain, noAckBlockchainSave, injectSpam, disableAckSending)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -67,11 +72,15 @@ func RunConsensusTestCase1VM1() {
 	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), false, roomID)
 	peerDetails.AddPeer(publicKey4_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey4_VM4), false, roomID)
 
-	// Set this to true to enable spam injection mode
-	injectSpam := false
+	// Network configuration parameters
+	port := uint64(3000)
+	toggleAttacker := false
+	toggleBlockchain := true
 	noAckBlockchainSave := false
+	injectSpam := false
+	disableAckSending := false
 
-	gossipNet, err := gossipnetwork.InitializeGossipNetwork(roomID, 3000, false, true, noAckBlockchainSave, injectSpam)
+	gossipNet, err := gossipnetwork.InitializeGossipNetwork(roomID, port, toggleAttacker, toggleBlockchain, noAckBlockchainSave, injectSpam, disableAckSending)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -97,11 +106,15 @@ func RunConsensusTestCase2VM1() {
 	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), false, roomID)
 	peerDetails.AddPeer(publicKey4_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey4_VM4), false, roomID)
 
-	// Set this to true to enable spam injection mode
-	injectSpam := false
+	// Network configuration parameters
+	port := uint64(3000)
+	toggleAttacker := false
+	toggleBlockchain := true
 	noAckBlockchainSave := false
+	injectSpam := false
+	disableAckSending := false
 
-	gossipNet, err := gossipnetwork.InitializeGossipNetwork(roomID, 3000, false, true, noAckBlockchainSave, injectSpam)
+	gossipNet, err := gossipnetwork.InitializeGossipNetwork(roomID, port, toggleAttacker, toggleBlockchain, noAckBlockchainSave, injectSpam, disableAckSending)
 	if err != nil {
 		fmt.Println(err)
 	}

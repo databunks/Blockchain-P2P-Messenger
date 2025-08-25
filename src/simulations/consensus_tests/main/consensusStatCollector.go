@@ -27,7 +27,7 @@ var runStartTime time.Time
 var consensusStartTime time.Time // Time when first blockchain is received (consensus starts)
 
 // Consensus mode toggle
-var consensusMode string = "ack" // "control" for 4 nodes, "ack" for 3 nodes
+var consensusMode string = "control" // "control" for 4 nodes, "ack" for 3 nodes
 var expectedBlockchains int = 12 // 12 for control mode (4 VMs × 3 messages), 3 for ACK mode
 
 var consensusMutex sync.Mutex

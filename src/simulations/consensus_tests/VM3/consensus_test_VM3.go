@@ -12,7 +12,6 @@ var publicKey3_VM3 = "9356e1f92f5adff2ab05115d54aff4b8c756d604704b5ddd71ff320f2d
 var publicKey4_VM4 = "0000040cd8e7f870ff1146e03589b988d82aedb6464c5085a9aba945e60c4fcd"
 var roomID = "room-xyz-987"
 
-
 // N = 4
 // Testing for time delay sybil attack
 func RunConsensusTestControlVM3() {
@@ -23,10 +22,15 @@ func RunConsensusTestControlVM3() {
 	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), false, roomID)
 	peerDetails.AddPeer(publicKey4_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey4_VM4), false, roomID)
 
-	// Set this to true to enable spam injection mode
+	// Network configuration parameters
+	port := uint64(3000)
+	toggleAttacker := false
+	toggleBlockchain := true
+	noAckBlockchainSave := true
 	injectSpam := false
+	disableAckSending := false
 
-	gossipnetwork.InitializeGossipNetwork(roomID, 3000, false, true, true, injectSpam)
+	gossipnetwork.InitializeGossipNetwork(roomID, port, toggleAttacker, toggleBlockchain, noAckBlockchainSave, injectSpam, disableAckSending)
 }
 
 func RunConsensusTestCase1VM3() {
@@ -37,13 +41,16 @@ func RunConsensusTestCase1VM3() {
 	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), false, roomID)
 	peerDetails.AddPeer(publicKey4_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey4_VM4), false, roomID)
 
-	// Set this to true to enable spam injection mode
-	injectSpam := false
+	// Network configuration parameters
+	port := uint64(3000)
+	toggleAttacker := false
+	toggleBlockchain := true
 	noAckBlockchainSave := false
+	injectSpam := false
+	disableAckSending := true
 
-	gossipnetwork.InitializeGossipNetwork(roomID, 3000, false, true, noAckBlockchainSave, injectSpam)	
+	gossipnetwork.InitializeGossipNetwork(roomID, port, toggleAttacker, toggleBlockchain, noAckBlockchainSave, injectSpam, disableAckSending)
 }
-
 
 // Case 1: 1 attacker (1 / 4 Attacker nodes)
 func RunConsensusTestCase2VM3() {
@@ -54,10 +61,14 @@ func RunConsensusTestCase2VM3() {
 	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), false, roomID)
 	peerDetails.AddPeer(publicKey4_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey4_VM4), false, roomID)
 
-	// Set this to true to enable spam injection mode
-	injectSpam := true
+	// Network configuration parameters
+	port := uint64(3000)
+	toggleAttacker := false
+	toggleBlockchain := true
 	noAckBlockchainSave := false
+	injectSpam := true
+	disableAckSending := true
 
-	gossipnetwork.InitializeGossipNetwork(roomID, 3000, false, true, noAckBlockchainSave, injectSpam)	
+	gossipnetwork.InitializeGossipNetwork(roomID, port, toggleAttacker, toggleBlockchain, noAckBlockchainSave, injectSpam, disableAckSending)
 
 }
