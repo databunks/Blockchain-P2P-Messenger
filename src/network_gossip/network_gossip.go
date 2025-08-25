@@ -112,6 +112,9 @@ type GossipNetwork struct {
 	injectSpamMessages  bool // When true, injects spam messages before sending blockchain to stat collector
 	disableAckSending   bool // When true, this node will not send ACK messages back
 
+	// Message forwarding settings
+	forwardingFanout int // Number of neighboring nodes to forward messages to (0 = all peers, >0 = random subset)
+
 }
 
 // var nodes []*consensus.Server
@@ -125,7 +128,7 @@ func init() {
 }
 
 // NewGossipNetwork creates a new integrated gossip network
-func NewGossipNetwork(nodeID uint64, roomID string, port uint64, threshold int, blockchainEnabled bool, attackerMode bool, noAckBlockchainSave bool, injectSpam bool, disableAckSending bool) *GossipNetwork {
+func NewGossipNetwork(nodeID uint64, roomID string, port uint64, threshold int, blockchainEnabled bool, attackerMode bool, noAckBlockchainSave bool, injectSpam bool, disableAckSending bool, forwardingFanout int) *GossipNetwork {
 	// Load private key for authentication
 	privateKey, publicKey := loadKeys()
 
@@ -148,6 +151,7 @@ func NewGossipNetwork(nodeID uint64, roomID string, port uint64, threshold int, 
 		noAckBlockchainSave: noAckBlockchainSave,
 		injectSpamMessages:  injectSpam,
 		disableAckSending:   disableAckSending,
+		forwardingFanout:    forwardingFanout,
 	}
 }
 
@@ -270,7 +274,7 @@ func (gn *GossipNetwork) authenticateMessage(msg GossipMessage, peer GossipNode)
 //   - noAckBlockchainSave: When true, messages are saved directly to blockchain without waiting for acknowledgments
 //   - injectSpam: When true, injects spam messages before sending blockchain to stat collector
 //   - disableAckSending: When true, this node will not send ACK messages back to other nodes
-func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool, toggleBlockchain bool, noAckBlockchainSave bool, injectSpam bool, disableAckSending bool) (*GossipNetwork, error) {
+func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool, toggleBlockchain bool, noAckBlockchainSave bool, injectSpam bool, disableAckSending bool, forwardingFanout int) (*GossipNetwork, error) {
 	peerCount := len(peerDetails.GetPeersInRoom(roomID))
 	calculatedThreshold := int(float64(peerCount) * 0.66) // 66% of peers
 	if calculatedThreshold < 2 {
@@ -281,7 +285,7 @@ func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool, to
 	fmt.Println(PublicKeyToID(GetYggdrasilNodeInfo().Key))
 
 	// Create gossip network instance
-	gossipNet := NewGossipNetwork(PublicKeyToID(GetYggdrasilNodeInfo().Key), roomID, port, calculatedThreshold, toggleBlockchain, toggleAttacker, noAckBlockchainSave, injectSpam, disableAckSending)
+	gossipNet := NewGossipNetwork(PublicKeyToID(GetYggdrasilNodeInfo().Key), roomID, port, calculatedThreshold, toggleBlockchain, toggleAttacker, noAckBlockchainSave, injectSpam, disableAckSending, forwardingFanout)
 
 	// Get Yggdrasil peers
 	yggdrasilPeers, err := gossipNet.GetYggdrasilPeers("unique")
@@ -975,6 +979,32 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 // 	fmt.Printf("Refreshed health for all %d peers\n", len(gn.gossipPeers))
 // }
 
+// SetForwardingFanout sets the number of neighboring nodes to forward messages to
+// Parameters:
+//   - fanout: Number of nodes to forward to (0 = all peers, >0 = random subset)
+func (gn *GossipNetwork) SetForwardingFanout(fanout int) {
+	gn.gossipMutex.Lock()
+	defer gn.gossipMutex.Unlock()
+
+	oldFanout := gn.forwardingFanout
+	gn.forwardingFanout = fanout
+
+	fmt.Printf("NODE %d: Forwarding fanout changed from %d to %d\n", gn.nodeID, oldFanout, fanout)
+
+	if fanout == 0 {
+		fmt.Printf("NODE %d: Will forward messages to ALL peers\n", gn.nodeID)
+	} else {
+		fmt.Printf("NODE %d: Will forward messages to %d random peers\n", gn.nodeID, fanout)
+	}
+}
+
+// GetForwardingFanout returns the current forwarding fanout setting
+func (gn *GossipNetwork) GetForwardingFanout() int {
+	gn.gossipMutex.RLock()
+	defer gn.gossipMutex.RUnlock()
+	return gn.forwardingFanout
+}
+
 // handleConsensusGossip handles consensus messages received via gossip
 func (gn *GossipNetwork) handleConsensusGossip(msg GossipMessage) {
 	// Handle consensus messages received via gossip
@@ -1003,10 +1033,23 @@ func (gn *GossipNetwork) forwardGossipMessage(msg GossipMessage) {
 		}
 		gn.gossipMutex.RUnlock()
 
-		// Forward to ALL peers (not just random subset)
-		selected := peers
+		// Apply forwarding fanout logic
+		var selected []*GossipNode
+		if gn.forwardingFanout == 0 {
+			// Forward to ALL peers (default behavior)
+			selected = peers
+			fmt.Printf("NODE %d: Forwarding to ALL %d peers (fanout=0)\n", gn.nodeID, len(selected))
+		} else if gn.forwardingFanout > 0 && gn.forwardingFanout < len(peers) {
+			// Forward to random subset of peers
+			selected = gn.selectRandomPeers(peers, gn.forwardingFanout)
+			fmt.Printf("NODE %d: Forwarding to %d random peers out of %d (fanout=%d)\n", gn.nodeID, len(selected), len(peers), gn.forwardingFanout)
+		} else {
+			// Fanout >= number of peers, forward to all
+			selected = peers
+			fmt.Printf("NODE %d: Forwarding to ALL %d peers (fanout=%d >= peers=%d)\n", gn.nodeID, len(selected), gn.forwardingFanout, len(peers))
+		}
 
-		// Ensure we forward to ALL peers to guarantee message propagation
+		// Forward messages to selected peers
 		for _, peer := range selected {
 			gn.SendGossipMessage(peer, msg)
 		}

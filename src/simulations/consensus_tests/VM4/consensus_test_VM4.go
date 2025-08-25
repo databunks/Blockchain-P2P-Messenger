@@ -29,8 +29,9 @@ func RunConsensusTestControlVM4() {
 	noAckBlockchainSave := true
 	injectSpam := false
 	disableAckSending := false
+	forwardingFanout := 0 // Default: forward to all peers
 
-	gossipnetwork.InitializeGossipNetwork(roomID, port, toggleAttacker, toggleBlockchain, noAckBlockchainSave, injectSpam, disableAckSending)
+	gossipnetwork.InitializeGossipNetwork(roomID, port, toggleAttacker, toggleBlockchain, noAckBlockchainSave, injectSpam, disableAckSending, forwardingFanout)
 
 }
 
@@ -50,8 +51,9 @@ func RunConsensusTestCase1VM4() {
 	noAckBlockchainSave := false
 	injectSpam := false
 	disableAckSending := false
+	forwardingFanout := 0 // Default: forward to all peers
 
-	gossipnetwork.InitializeGossipNetwork(roomID, port, toggleAttacker, toggleBlockchain, noAckBlockchainSave, injectSpam, disableAckSending)
+	gossipnetwork.InitializeGossipNetwork(roomID, port, toggleAttacker, toggleBlockchain, noAckBlockchainSave, injectSpam, disableAckSending, forwardingFanout)
 
 }
 
@@ -71,7 +73,8 @@ func RunConsensusTestCase2VM4() {
 	noAckBlockchainSave := false
 	injectSpam := false
 	disableAckSending := false
+	forwardingFanout := 0 // Default: forward to all peers
 
-	gossipnetwork.InitializeGossipNetwork(roomID, port, toggleAttacker, toggleBlockchain, noAckBlockchainSave, injectSpam, disableAckSending)
+	gossipnetwork.InitializeGossipNetwork(roomID, port, toggleAttacker, toggleBlockchain, noAckBlockchainSave, injectSpam, disableAckSending, forwardingFanout)
 
 }

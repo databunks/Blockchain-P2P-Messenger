@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"os"
 	"os/exec"
@@ -714,7 +715,6 @@ func SendMessage(messageContent string, roomID string, port uint64, typeofmessag
 			message := Message{
 				PublicKey: publicKeyHex,
 				Message:   messageContent,
-				RoomID:    roomID,
 				Type:      typeofmessage,
 				Timestamp: uint64(time.Now().Unix()),
 			}
@@ -762,6 +762,125 @@ func SendMessage(messageContent string, roomID string, port uint64, typeofmessag
 
 	wg.Wait() // Wait for all goroutines to finish
 	return nil
+}
+
+// SendMessageToLimitedNodes sends a message to only a specified number of nodes
+// Parameters:
+//   - messageContent: The message content to send
+//   - roomID: The room identifier
+//   - port: The port number for connections
+//   - typeofmessage: The type of message
+//   - maxNodes: Maximum number of nodes to send the message to (0 = all nodes)
+func SendMessageToLimitedNodes(messageContent string, roomID string, port uint64, typeofmessage string, maxNodes int) error {
+	peers := peerDetails.GetPeersInRoom(roomID)
+
+	if len(peers) == 0 {
+		return fmt.Errorf("no peers found in room %s", roomID)
+	}
+
+	// Load environment variables from .env file
+	err := godotenv.Load("../keydetails.env")
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	// Get the ED25519 private key from the environment variable
+	publicKeyHex := os.Getenv("PUBLIC_KEY")
+	if publicKeyHex == "" {
+		log.Fatal("ED25519_PUBLIC_KEY is not set in .env file")
+	}
+
+	// Determine how many nodes to send to
+	var selectedPeers []peerDetails.Peer
+	if maxNodes == 0 || maxNodes >= len(peers) {
+		// Send to all peers (same as original SendMessage)
+		selectedPeers = peers
+		fmt.Printf("📡 Sending message to ALL %d peers (maxNodes=%d)\n", len(selectedPeers), maxNodes)
+	} else {
+		// Select random subset of peers
+		selectedPeers = selectRandomPeers(peers, maxNodes)
+		fmt.Printf("🎲 Sending message to %d random peers out of %d (maxNodes=%d)\n", len(selectedPeers), len(peers), maxNodes)
+	}
+
+	var wg sync.WaitGroup
+
+	for _, peer := range selectedPeers {
+		wg.Add(1)
+		go func(peer peerDetails.Peer) {
+			defer wg.Done()
+
+			// Create the message struct
+			message := Message{
+				PublicKey: publicKeyHex,
+				Message:   messageContent,
+				Type:      typeofmessage,
+				Timestamp: uint64(time.Now().Unix()),
+			}
+
+			// Dial peer
+			fmt.Printf("Establishing connection with %s, %s.......\n", peer.IP, peer.PublicKey)
+			address := net.JoinHostPort(peer.IP, fmt.Sprintf("%d", port))
+			fmt.Println(address)
+
+			conn, err := net.Dial("tcp", address)
+			if err != nil {
+				log.Printf("Error connecting to %s: %v\n", peer.IP, err)
+				return
+			}
+			defer conn.Close()
+
+			// Marshal message
+			msgBytes, err := json.Marshal(message)
+			if err != nil {
+				log.Printf("Error marshaling message for %s: %v\n", peer.IP, err)
+				return
+			}
+
+			// Send message
+			_, err = conn.Write(msgBytes)
+			if err != nil {
+				log.Printf("Error sending message to %s: %v\n", peer.IP, err)
+				return
+			}
+
+			// Read the response from the peer
+			buffer := make([]byte, 1024) // Buffer to store incoming data
+			n, err := conn.Read(buffer)
+			if err != nil {
+				log.Printf("Error reading response from %s: %v\n", peer.IP, err)
+				return
+			}
+
+			// Print the response received from the peer
+			response := string(buffer[:n])
+			fmt.Printf("Response from %s: %s\n", peer.IP, response)
+
+		}(peer) // Pass peer as an argument to avoid closure capture issues
+	}
+
+	wg.Wait() // Wait for all goroutines to finish
+	return nil
+}
+
+// selectRandomPeers selects a random subset of peers for limited message sending
+func selectRandomPeers(peers []peerDetails.Peer, count int) []peerDetails.Peer {
+	if count >= len(peers) {
+		return peers
+	}
+
+	// Create a copy of peers to avoid modifying the original slice
+	peersCopy := make([]peerDetails.Peer, len(peers))
+	copy(peersCopy, peers)
+
+	// Fisher-Yates shuffle to get random selection
+	rand.Seed(time.Now().UnixNano())
+	for i := len(peersCopy) - 1; i > 0; i-- {
+		j := rand.Intn(i + 1)
+		peersCopy[i], peersCopy[j] = peersCopy[j], peersCopy[i]
+	}
+
+	// Return the first 'count' peers
+	return peersCopy[:count]
 }
 
 func StartYggdrasilServer() error {
