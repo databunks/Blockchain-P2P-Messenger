@@ -268,7 +268,7 @@ func (gn *GossipNetwork) authenticateMessage(msg GossipMessage, peer GossipNode)
 //   - noAckBlockchainSave: When true, messages are saved directly to blockchain without waiting for acknowledgments
 func InitializeGossipNetwork(roomID string, port uint64, toggleAttacker bool, toggleBlockchain bool, noAckBlockchainSave bool, injectSpam bool) (*GossipNetwork, error) {
 	peerCount := len(peerDetails.GetPeersInRoom(roomID))
-	calculatedThreshold := int(float64(peerCount) * 0.66) // 66% of peers
+	calculatedThreshold := int(float64(peerCount) * 0.75) // 75% of peers (true BFT)
 	if calculatedThreshold < 2 {
 		calculatedThreshold = 2 // Minimum threshold of 2 acks
 	}
