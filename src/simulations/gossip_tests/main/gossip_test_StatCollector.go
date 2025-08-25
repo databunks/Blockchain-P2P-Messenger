@@ -22,9 +22,9 @@ var messageInitiationTime time.Time   // Time when first message is sent
 var lastMessageReceivedTime time.Time // Time when last message was received
 
 // Gossip mode toggle
-var gossipMode string = "control" // "control" for normal operation, "attack" for attack scenario
-var expectedNodes int = 4         // Total number of nodes in the network
-var expectedReachability int = 4  // Expected number of nodes to receive the message
+var gossipMode string = "attack" // "control" for normal operation, "attack" for attack scenario
+var expectedNodes int = 4        // Total number of nodes in the network
+var expectedReachability int = 4 // Expected number of nodes to receive the message
 
 // Gossip testing mutexes
 var gossipMutex sync.Mutex
@@ -186,7 +186,7 @@ func sendStartGossipingCommand() {
 	fmt.Printf("🎯 Message initiation started at: %s\n", messageInitiationTime.Format("15:04:05.000"))
 
 	// Send command to VM1 on localhost:3001
-	go sendStartCommandToNode("localhost", 3001, "SEND_LIMITED_MESSAGE:2")
+	go sendStartCommandToNode("localhost", 3001, "SEND_GOSSIP_MESSAGE:Official group chat message!")
 }
 
 // sendStartCommandToNode sends a start command to a specific node
@@ -566,13 +566,8 @@ func handleConnection(conn net.Conn) {
 			return
 		}
 
-		// Unmarshal message (you JSON-encoded it before sending)
-		var msg string
-		err = json.Unmarshal(buffer[:n], &msg)
-		if err != nil {
-			fmt.Println("Error unmarshaling message:", err)
-			return
-		}
+		// Convert buffer to string (plain text message, not JSON)
+		msg := strings.TrimSpace(string(buffer[:n]))
 
 		// Process the message
 		processGossipMessage(msg)
@@ -613,8 +608,17 @@ func processGossipMessage(msg string) {
 
 // extractNodeIDFromMessage extracts the node ID from a message
 func extractNodeIDFromMessage(msg string) string {
-	// This is a placeholder - you'll need to implement based on your message format
-	// For now, return a simple identifier
+	// For gossip messages, the format is "Received Censored Message {timestamp} from {publicKey}"
+	// We'll use the sender's public key as the unique identifier for this receipt
+	if strings.Contains(msg, "Received Censored Message") {
+		// Extract sender's public key from the message
+		parts := strings.Split(msg, " ")
+		if len(parts) >= 6 {
+			return parts[5] // Return the sender's public key as the node ID
+		}
+	}
+
+	// Fallback: return a simple identifier
 	return fmt.Sprintf("node_%d", time.Now().UnixNano()%1000)
 }
 

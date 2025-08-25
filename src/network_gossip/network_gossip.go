@@ -1318,8 +1318,8 @@ func sendGossipMessageReceipt(senderPublicKey string, roomID string) {
 			}
 			defer conn.Close()
 
-			// Create message receipt
-			receiptMessage := fmt.Sprintf("Received Censored Message %d", time.Now().Unix())
+			// Create message receipt with sender's public key to make it unique
+			receiptMessage := fmt.Sprintf("Received Censored Message %d from %s", time.Now().Unix(), senderPublicKey)
 
 			// Send message receipt
 			_, err = conn.Write([]byte(receiptMessage))

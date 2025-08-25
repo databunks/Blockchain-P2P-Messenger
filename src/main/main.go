@@ -81,7 +81,7 @@ func main() {
 	
 
 	// consensustestsVM1.RunConsensusTestCase1VM1()
-	gossip_test_VM1.RunGossipTestControlVM1()
+	gossip_test_VM1.RunGossipTestCaseVM1()
 
 
 	

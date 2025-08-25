@@ -18,6 +18,9 @@ var publicKey3_VM3 string = "9356e1f92f5adff2ab05115d54aff4b8c756d604704b5ddd71f
 var publicKey4_VM4 string = "0000040cd8e7f870ff1146e03589b988d82aedb6464c5085a9aba945e60c4fcd"
 var roomID string = "room-xyz-987"
 
+// Global gossip network instance
+var gossipNet *gossipnetwork.GossipNetwork
+
 // N = 4
 // VM1 will demonstrate Gossip Test Control (Old Network)
 // VM1 is the attacker VM which will selectively censor
@@ -50,7 +53,6 @@ func RunGossipTestControlVM1() {
 	fmt.Println("✅ VM1: Gossip Test Control (Old Network) initialized successfully")
 }
 
-
 // N = 4
 // VM1 will demonstrate Gossip Test Case 1 (New Gossip Network)
 func RunGossipTestCaseVM1() {
@@ -63,11 +65,11 @@ func RunGossipTestCaseVM1() {
 	// Network configuration parameters
 	port := uint64(3000)
 	toggleAttacker := false
-	toggleBlockchain := false
+	toggleBlockchain := true
 	noAckBlockchainSave := true
 	injectSpam := false
 	disableAckSending := false
-	forwardingFanout := 2 // Default: forward to all peers
+	forwardingFanout := 0 // Default: forward to all peers
 
 	fmt.Printf("🚀 VM1: Initializing Gossip Test Case 1 (New Gossip Network)\n")
 	fmt.Printf("   Room ID: %s\n", roomID)
@@ -78,17 +80,19 @@ func RunGossipTestCaseVM1() {
 	fmt.Printf("   Disable ACK Sending: %t\n", disableAckSending)
 	fmt.Printf("   Forwarding Fanout: %d (0 = all peers)\n", forwardingFanout)
 
-	gsp, err:= gossipnetwork.InitializeGossipNetwork(roomID, port, toggleAttacker, toggleBlockchain, noAckBlockchainSave, injectSpam, disableAckSending, forwardingFanout)
-
-	if (err != nil){
-		gsp.GossipMessage("chat", "broadcast", "Official group chat message!", 0, roomID, "")
+	// Initialize gossip network
+	var err error
+	gossipNet, err = gossipnetwork.InitializeGossipNetwork(roomID, port, toggleAttacker, toggleBlockchain, noAckBlockchainSave, injectSpam, disableAckSending, forwardingFanout)
+	if err != nil {
+		fmt.Printf("❌ Error initializing gossip network: %v\n", err)
+		return
 	}
+
+	// Start command listener in a goroutine
+	go startCommandListener()
 
 	fmt.Println("✅ VM1: Gossip Test Case 1 (New Gossip Network) initialized successfully")
 }
-
-
-
 
 // startCommandListener listens for commands from the stat collector
 func startCommandListener() {
@@ -145,6 +149,23 @@ func handleCommandConnection(conn net.Conn) {
 				fmt.Printf("✅ VM1: Sent limited message to %d nodes: %s\n", maxNodes, testMessage)
 			}
 		}
+	} else if strings.HasPrefix(command, "SEND_GOSSIP_MESSAGE:") {
+		parts := strings.Split(command, ":")
+		if len(parts) == 2 {
+			message := parts[1]
+			if message == "" {
+				message = "Official group chat message!"
+			}
+
+			fmt.Printf("🚀 VM1: Sending gossip message: %s\n", message)
+
+			// Send the gossip message using the global gossip network instance
+			if gossipNet != nil {
+				gossipNet.GossipMessage("chat", "broadcast", message, 0, roomID, "")
+				fmt.Printf("📤 VM1: Gossip message sent: %s\n", message)
+			} else {
+				fmt.Printf("❌ Error: Gossip network not initialized\n")
+			}
+		}
 	}
 }
-

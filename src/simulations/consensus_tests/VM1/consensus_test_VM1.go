@@ -213,17 +213,17 @@ func executeGossipSequence(runNumber int) {
 	fmt.Printf("VM1: Executing gossip sequence for run %d\n", runNumber)
 
 	// Message 1
-	globalGossipNet.GossipMessage("chat", "broadcast", fmt.Sprintf("Consensus Test Message 1 (Run %d)", runNumber), 1, globalRoomID, "")
+	globalGossipNet.GossipMessage("chat", "broadcast", fmt.Sprintf("Consensus Test Message 1 (Run %d)", runNumber), 0, globalRoomID, "")
 	fmt.Println("VM1: Sent message 1")
 	time.Sleep(time.Second * 3) // 3 second delay for better consensus
 
 	// Message 2
-	globalGossipNet.GossipMessage("chat", "broadcast", fmt.Sprintf("Consensus Test Message 2 (Run %d)", runNumber), 1, globalRoomID, "")
+	globalGossipNet.GossipMessage("chat", "broadcast", fmt.Sprintf("Consensus Test Message 2 (Run %d)", runNumber), 0, globalRoomID, "")
 	fmt.Println("VM1: Sent message 2")
 	time.Sleep(time.Second * 3) // 3 second delay for better consensus
 
 	// Message 3
-	globalGossipNet.GossipMessage("chat", "broadcast", fmt.Sprintf("Consensus Test Message 3 (Run %d)", runNumber), 1, globalRoomID, "")
+	globalGossipNet.GossipMessage("chat", "broadcast", fmt.Sprintf("Consensus Test Message 3 (Run %d)", runNumber), 0, globalRoomID, "")
 	fmt.Println("VM1: Sent message 3")
 	fmt.Printf("VM1: All 3 messages sent for run %d, waiting for consensus...\n", runNumber)
 }

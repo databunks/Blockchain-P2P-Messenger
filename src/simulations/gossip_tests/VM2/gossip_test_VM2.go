@@ -32,7 +32,7 @@ func RunGossipTestControlVM2(runAsAttacker bool, fanout int) {
 
 }
 
-func RunGossipTestCaseVM1() {
+func RunGossipTestCaseVM2() {
 	// Setup Peers
 	peerDetails.AddPeer(publicKey_VM1, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey_VM1), true, roomID)
 	peerDetails.AddPeer(publicKey2_VM2, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey2_VM2), false, roomID)
