@@ -6,6 +6,9 @@ import (
 	gossipnetwork "blockchain-p2p-messenger/src/network_gossip"
 	"blockchain-p2p-messenger/src/peerDetails"
 	"fmt"
+	"net"
+	"strconv"
+	"strings"
 )
 
 // VM1 Configuration
@@ -17,6 +20,7 @@ var roomID string = "room-xyz-987"
 
 // N = 4
 // VM1 will demonstrate Gossip Test Control (Old Network)
+// VM1 is the attacker VM which will selectively censor
 func RunGossipTestControlVM1() {
 	// Setup Peers
 	peerDetails.AddPeer(publicKey_VM1, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey_VM1), true, roomID)
@@ -28,24 +32,28 @@ func RunGossipTestControlVM1() {
 	fmt.Printf("   Room ID: %s\n", roomID)
 	fmt.Printf("   Using old network.InitializeNetwork\n")
 
-	// Use the old network initialization
-	network.InitializeNetwork(roomID, true, true)
+	// Start command listener in a goroutine
+	go startCommandListener()
 
-	// // Send a test message to limited nodes (example: send to only 2 nodes)
-	// testMessage := "Hello from VM1 Control (Old Network)!"
-	// err := network.SendMessageToLimitedNodes(testMessage, roomID, 3000, "chat", 2)
-	// if err != nil {
-	// 	fmt.Printf("❌ Error sending limited message: %v\n", err)
-	// } else {
-	// 	fmt.Printf("✅ Sent limited message to 2 nodes: %s\n", testMessage)
-	// }
+	// // Use the old network initialization
+	// network.InitializeNetwork(roomID, true, true)
+
+	// Send a test message to limited nodes (example: send to only 2 nodes)
+	testMessage := "Official group chat message!"
+	err := network.SendMessage(testMessage, roomID, 3000, "chat")
+	if err != nil {
+		fmt.Printf("❌ Error sending limited message: %v\n", err)
+	} else {
+		fmt.Printf("✅ Sent limited message to 2 nodes: %s\n", testMessage)
+	}
 
 	fmt.Println("✅ VM1: Gossip Test Control (Old Network) initialized successfully")
 }
 
+
 // N = 4
 // VM1 will demonstrate Gossip Test Case 1 (New Gossip Network)
-func RunGossipTestCase1VM1() {
+func RunGossipTestCaseVM1() {
 	// Setup Peers
 	peerDetails.AddPeer(publicKey_VM1, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey_VM1), true, roomID)
 	peerDetails.AddPeer(publicKey2_VM2, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey2_VM2), false, roomID)
@@ -55,11 +63,11 @@ func RunGossipTestCase1VM1() {
 	// Network configuration parameters
 	port := uint64(3000)
 	toggleAttacker := false
-	toggleBlockchain := true
+	toggleBlockchain := false
 	noAckBlockchainSave := true
 	injectSpam := false
 	disableAckSending := false
-	forwardingFanout := 0 // Default: forward to all peers
+	forwardingFanout := 2 // Default: forward to all peers
 
 	fmt.Printf("🚀 VM1: Initializing Gossip Test Case 1 (New Gossip Network)\n")
 	fmt.Printf("   Room ID: %s\n", roomID)
@@ -70,7 +78,73 @@ func RunGossipTestCase1VM1() {
 	fmt.Printf("   Disable ACK Sending: %t\n", disableAckSending)
 	fmt.Printf("   Forwarding Fanout: %d (0 = all peers)\n", forwardingFanout)
 
-	gossipnetwork.InitializeGossipNetwork(roomID, port, toggleAttacker, toggleBlockchain, noAckBlockchainSave, injectSpam, disableAckSending, forwardingFanout)
+	gsp, err:= gossipnetwork.InitializeGossipNetwork(roomID, port, toggleAttacker, toggleBlockchain, noAckBlockchainSave, injectSpam, disableAckSending, forwardingFanout)
+
+	if (err != nil){
+		gsp.GossipMessage("chat", "broadcast", "Official group chat message!", 0, roomID, "")
+	}
 
 	fmt.Println("✅ VM1: Gossip Test Case 1 (New Gossip Network) initialized successfully")
 }
+
+
+
+
+// startCommandListener listens for commands from the stat collector
+func startCommandListener() {
+	listener, err := net.Listen("tcp", "localhost:3001")
+	if err != nil {
+		fmt.Printf("❌ Error starting command listener: %v\n", err)
+		return
+	}
+	defer listener.Close()
+
+	fmt.Println("🎧 VM1: Command listener started on localhost:3001")
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			fmt.Printf("❌ Error accepting connection: %v\n", err)
+			continue
+		}
+
+		go handleCommandConnection(conn)
+	}
+}
+
+// handleCommandConnection processes incoming commands
+func handleCommandConnection(conn net.Conn) {
+	defer conn.Close()
+
+	buffer := make([]byte, 1024)
+	n, err := conn.Read(buffer)
+	if err != nil {
+		fmt.Printf("❌ Error reading command: %v\n", err)
+		return
+	}
+
+	command := strings.TrimSpace(string(buffer[:n]))
+	fmt.Printf("📨 VM1: Received command: %s\n", command)
+
+	if strings.HasPrefix(command, "SEND_LIMITED_MESSAGE:") {
+		parts := strings.Split(command, ":")
+		if len(parts) == 2 {
+			maxNodesStr := parts[1]
+			maxNodes, err := strconv.Atoi(maxNodesStr)
+			if err != nil {
+				fmt.Printf("❌ Error parsing maxNodes: %v\n", err)
+				return
+			}
+
+			fmt.Printf("🚀 VM1: Sending limited message to %d nodes\n", maxNodes)
+			testMessage := "Official group chat message!"
+			err = network.SendMessageToLimitedNodes(testMessage, roomID, 3000, "chat", maxNodes)
+			if err != nil {
+				fmt.Printf("❌ Error sending limited message: %v\n", err)
+			} else {
+				fmt.Printf("✅ VM1: Sent limited message to %d nodes: %s\n", maxNodes, testMessage)
+			}
+		}
+	}
+}
+

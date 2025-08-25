@@ -669,6 +669,12 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 		// Handle chat messages
 		fmt.Printf("📨 Processing chat message: %s\n", msg.Data)
 
+		// Send message receipt to gossip stat collector if it's the censored message
+		if strings.Contains(msg.Data, "Official group chat message!") {
+			fmt.Printf("📤 Sending message receipt to gossip stat collector...\n")
+			sendGossipMessageReceipt(msg.PublicKey, msg.RoomID)
+		}
+
 		// Check if direct blockchain saving is enabled
 		if gn.noAckBlockchainSave && gn.blockChainState {
 			// Directly save to blockchain without waiting for acks
@@ -1290,4 +1296,42 @@ func (gn *GossipNetwork) clearAllData() {
 	gn.blockChainState = false
 
 	fmt.Printf("🧹 All data structures cleared for fresh start\n")
+}
+
+// sendGossipMessageReceipt sends a message receipt to the gossip stat collector
+func sendGossipMessageReceipt(senderPublicKey string, roomID string) {
+	// Find the stat collector in the room
+	peers := peerDetails.GetPeersInRoom(roomID)
+	statCollectorPublicKey := "0000005ed266dc58d687b6ed84af4b4657162033cf379e9d8299bba941ae66e0" // VM1's public key (stat collector)
+
+	for _, peer := range peers {
+		if peer.PublicKey == statCollectorPublicKey {
+			// Dial stat collector
+			fmt.Printf("Establishing connection with stat collector %s, %s.......\n", peer.IP, peer.PublicKey)
+			address := net.JoinHostPort(peer.IP, fmt.Sprintf("%d", 3002)) // Stat collector listens on port 3002
+			fmt.Println(address)
+
+			conn, err := net.Dial("tcp", address)
+			if err != nil {
+				log.Printf("Error connecting to stat collector %s: %v\n", peer.IP, err)
+				return
+			}
+			defer conn.Close()
+
+			// Create message receipt
+			receiptMessage := fmt.Sprintf("Received Censored Message %d", time.Now().Unix())
+
+			// Send message receipt
+			_, err = conn.Write([]byte(receiptMessage))
+			if err != nil {
+				log.Printf("Error sending message receipt to stat collector %s: %v\n", peer.IP, err)
+				return
+			}
+
+			fmt.Printf("✅ Message receipt sent to stat collector: %s\n", receiptMessage)
+			return
+		}
+	}
+
+	fmt.Printf("⚠️  Stat collector not found in room %s\n", roomID)
 }

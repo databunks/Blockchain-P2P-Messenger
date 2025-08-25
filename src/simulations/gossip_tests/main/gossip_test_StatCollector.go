@@ -18,7 +18,8 @@ var currentRun int = 0
 var totalRuns int = 100
 var messagesThisRun int = 0
 var runStartTime time.Time
-var messageInitiationTime time.Time // Time when first message is sent
+var messageInitiationTime time.Time   // Time when first message is sent
+var lastMessageReceivedTime time.Time // Time when last message was received
 
 // Gossip mode toggle
 var gossipMode string = "control" // "control" for normal operation, "attack" for attack scenario
@@ -142,7 +143,8 @@ func startNewRun() {
 	messagesMutex.Lock()
 	messagesThisRun = 0
 	messagesMutex.Unlock()
-	messageInitiationTime = time.Time{} // Reset message initiation time for new run
+	messageInitiationTime = time.Time{}   // Reset message initiation time for new run
+	lastMessageReceivedTime = time.Time{} // Reset last message received time for new run
 	testRunningMutex.Lock()
 	isTestRunning = true
 	testRunningMutex.Unlock()
@@ -179,18 +181,12 @@ func startNewRun() {
 func sendStartGossipingCommand() {
 	fmt.Println("Sending start gossiping command to VM1...")
 
-	// Find VM1 in the room
-	peers := peerDetails.GetPeersInRoom("room-xyz-987")
-	for _, peer := range peers {
-		// VM1 is typically the first honest node
-		if peer.PublicKey == honestNodes[0] {
-			fmt.Printf("Starting gossip test on VM1: %s...\n", peer.PublicKey[:16]+"...")
+	// Set message initiation time when we send the command
+	messageInitiationTime = time.Now()
+	fmt.Printf("🎯 Message initiation started at: %s\n", messageInitiationTime.Format("15:04:05.000"))
 
-			// Send start command to VM1
-			go sendStartCommandToNode(peer.IP, 3000, "START_GOSSIP_TEST")
-			break
-		}
-	}
+	// Send command to VM1 on localhost:3001
+	go sendStartCommandToNode("localhost", 3001, "SEND_LIMITED_MESSAGE:2")
 }
 
 // sendStartCommandToNode sends a start command to a specific node
@@ -224,17 +220,84 @@ func isRunComplete() bool {
 	return len(nodeMessageReceipts) >= expectedReachability
 }
 
+// recordRunMetrics records metrics for a run, whether completed or timed out
+func recordRunMetrics(completed bool) {
+	// Calculate reachability based on current receipts
+	reachability := calculateReachability()
+	reachabilityResults = append(reachabilityResults, reachability)
+
+	// Calculate latency (from message initiation to last message received)
+	var latency int64
+	if !messageInitiationTime.IsZero() && !lastMessageReceivedTime.IsZero() {
+		latency = lastMessageReceivedTime.Sub(messageInitiationTime).Milliseconds()
+	} else if !messageInitiationTime.IsZero() {
+		// If no messages were received, use timeout time
+		latency = time.Since(messageInitiationTime).Milliseconds()
+	} else {
+		// Fallback to run start time if message initiation time is not set
+		latency = time.Since(runStartTime).Milliseconds()
+	}
+	totalLatencies = append(totalLatencies, latency)
+
+	// Get message overhead for this run
+	messagesSentMutex.Lock()
+	overhead := totalMessagesSent
+	messagesSentMutex.Unlock()
+	messageOverheadCounts = append(messageOverheadCounts, overhead)
+
+	// Determine attack success/failure
+	attackSuccess := determineAttackSuccess(reachability)
+	attackSuccessRates = append(attackSuccessRates, attackSuccess)
+
+	// Store completion time for this run
+	runCompletionTimes = append(runCompletionTimes, time.Now())
+
+	// Display run results
+	if completed {
+		if attackSuccess {
+			fmt.Printf("Run %d: Reachability: %.1f%% < 100%% → 🚨 ATTACK SUCCESSFUL (Latency: %d ms, Overhead: %d msgs)\n",
+				currentRun, reachability*100, latency, overhead)
+		} else {
+			fmt.Printf("Run %d: Reachability: %.1f%% >= 100%% → ✅ ATTACK FAILED (Latency: %d ms, Overhead: %d msgs)\n",
+				currentRun, reachability*100, latency, overhead)
+		}
+	} else {
+		fmt.Printf("Run %d: TIMEOUT - Reachability: %.1f%% (Latency: %d ms, Overhead: %d msgs)\n",
+			currentRun, reachability*100, latency, overhead)
+	}
+}
+
 // waitForTestCompletion waits for all runs to finish
 func waitForTestCompletion() {
 	for currentRun < totalRuns {
-		// Wait for current run to complete
+		// Wait for current run to complete with timeout
+		timeout := time.After(1 * time.Second) // 1 second timeout per run
+		runCompleted := false
 		for isTestRunning && !isRunComplete() {
-			time.Sleep(1 * time.Second)
+			select {
+			case <-timeout:
+				fmt.Printf("⚠️  Run %d timed out after 1 second, moving to next run\n", currentRun)
+				testRunningMutex.Lock()
+				isTestRunning = false
+				testRunningMutex.Unlock()
+				runCompleted = false
+				break
+			default:
+				time.Sleep(1 * time.Second)
+			}
 		}
+
+		// Check if run completed successfully (not timed out)
+		if !isTestRunning && isRunComplete() {
+			runCompleted = true
+		}
+
+		// Record metrics for this run (whether completed or timed out)
+		recordRunMetrics(runCompleted)
 
 		if currentRun < totalRuns {
 			// Start next run
-			time.Sleep(2 * time.Second) // Brief pause between runs
+			time.Sleep(3 * time.Second) // 3 second pause between runs
 			startNewRun()
 		}
 	}
@@ -262,9 +325,15 @@ func processMessageForGossip(msg string, nodeID string) {
 	nodeMessageReceiptsMutex.Lock()
 	nodeMessageReceipts[nodeID] = true
 	receiptCount := len(nodeMessageReceipts)
+	lastMessageReceivedTime = time.Now() // Update last message received time
 	nodeMessageReceiptsMutex.Unlock()
 
-	fmt.Printf("Run %d: Message receipt %d/%d from %s\n", currentRun, receiptCount, expectedReachability, nodeID[:16]+"...")
+	// Safely truncate nodeID for display
+	displayID := nodeID
+	if len(nodeID) > 16 {
+		displayID = nodeID[:16] + "..."
+	}
+	fmt.Printf("Run %d: Message receipt %d/%d from %s\n", currentRun, receiptCount, expectedReachability, displayID)
 
 	// Check if run is complete
 	if receiptCount >= expectedReachability {
@@ -272,51 +341,11 @@ func processMessageForGossip(msg string, nodeID string) {
 		isTestRunning = false
 		testRunningMutex.Unlock()
 
-		// Record the EXACT time when all messages are received
-		allMessagesReceivedTime := time.Now()
-
-		fmt.Printf("Run %d: All %d messages received, calculating metrics...\n", currentRun, expectedReachability)
-
-		// Calculate metrics for this run
-		fmt.Printf("⏱️  Starting metrics calculation...\n")
-		metricsStart := time.Now()
-
-		// Calculate reachability
-		reachability := calculateReachability()
-		reachabilityResults = append(reachabilityResults, reachability)
-
-		// Calculate latency (from message initiation to all nodes receiving)
-		latency := allMessagesReceivedTime.Sub(runStartTime).Milliseconds()
-		totalLatencies = append(totalLatencies, latency)
-
-		// Get message overhead for this run
-		messagesSentMutex.Lock()
-		overhead := totalMessagesSent
-		messagesSentMutex.Unlock()
-		messageOverheadCounts = append(messageOverheadCounts, overhead)
-
-		// Determine attack success/failure
-		attackSuccess := determineAttackSuccess(reachability)
-		attackSuccessRates = append(attackSuccessRates, attackSuccess)
-
-		metricsDuration := time.Since(metricsStart).Milliseconds()
-		fmt.Printf("⏱️  Metrics calculation completed in %d ms\n", metricsDuration)
-
-		// Display run results
-		if attackSuccess {
-			fmt.Printf("Run %d: Reachability: %.1f%% < 100%% → 🚨 ATTACK SUCCESSFUL (Latency: %d ms, Overhead: %d msgs)\n",
-				currentRun, reachability*100, latency, overhead)
-		} else {
-			fmt.Printf("Run %d: Reachability: %.1f%% >= 100%% → ✅ ATTACK FAILED (Latency: %d ms, Overhead: %d msgs)\n",
-				currentRun, reachability*100, latency, overhead)
-		}
-
-		// Store completion time for this run
-		runCompletionTimes = append(runCompletionTimes, allMessagesReceivedTime)
+		fmt.Printf("Run %d: All %d messages received, run completed successfully\n", currentRun, expectedReachability)
 
 		// Wait briefly to ensure all messages are properly sent before clearing
-		fmt.Printf("⏳ Waiting 2 seconds to ensure all messages are sent...\n")
-		time.Sleep(2 * time.Second)
+		fmt.Printf("⏳ Waiting 3 seconds to ensure all messages are sent...\n")
+		time.Sleep(3 * time.Second)
 
 		// Clear message tracking on all VMs before next run
 		fmt.Printf("🧹 Clearing message tracking on all VMs for next run...\n")
@@ -331,7 +360,7 @@ func processMessageForGossip(msg string, nodeID string) {
 
 		// Brief barrier to ensure complete isolation
 		fmt.Printf("🚧 Ensuring complete run isolation...\n")
-		time.Sleep(1 * time.Second)
+		time.Sleep(3 * time.Second)
 	}
 }
 
@@ -340,17 +369,17 @@ func calculateReachability() float64 {
 	nodeMessageReceiptsMutex.Lock()
 	defer nodeMessageReceiptsMutex.Unlock()
 
-	if expectedNodes == 0 {
+	if expectedReachability == 0 {
 		return 0.0
 	}
 
 	// Count nodes that received the message
 	receivedCount := len(nodeMessageReceipts)
-	reachability := float64(receivedCount) / float64(expectedNodes)
+	reachability := float64(receivedCount) / float64(expectedReachability)
 
 	fmt.Printf("   📊 Reachability Calculation:\n")
 	fmt.Printf("      - Nodes that received message: %d\n", receivedCount)
-	fmt.Printf("      - Total nodes in network: %d\n", expectedNodes)
+	fmt.Printf("      - Expected reachability: %d\n", expectedReachability)
 	fmt.Printf("      - Reachability: %.1f%%\n", reachability*100)
 
 	return reachability
@@ -474,6 +503,26 @@ func saveResultsToCSV() {
 		}
 		writer.Write(row)
 	}
+
+	// Calculate and write summary row with attack success rate
+	var attackSuccessCount int
+	for _, success := range attackSuccessRates {
+		if success {
+			attackSuccessCount++
+		}
+	}
+	attackSuccessRate := float64(attackSuccessCount) / float64(len(attackSuccessRates)) * 100
+
+	// Write summary row
+	summaryRow := []string{
+		"SUMMARY",
+		fmt.Sprintf("%.1f", attackSuccessRate),
+		fmt.Sprintf("%d", attackSuccessCount),
+		fmt.Sprintf("%d", len(attackSuccessRates)),
+		"Attack Success Rate (%)",
+		time.Now().Format("15:04:05.000"),
+	}
+	writer.Write(summaryRow)
 
 	fmt.Printf("✅ Results saved to %s\n", filename)
 }

@@ -149,9 +149,9 @@ func InitializeNetwork(roomID string, disableAuthToggle bool, isCensoringTestTog
 
 	go ListenOnPort(3000)
 
-	nodes = consensus.InitializeConsensus(len(nodeIDs), nodeIDs)
+	// nodes = consensus.InitializeConsensus(len(nodeIDs), nodeIDs)
 
-	time.Sleep(time.Minute * 1)
+	time.Sleep(time.Second * 3)
 
 	return nil
 }
@@ -255,6 +255,8 @@ func handleConnection(conn net.Conn) {
 
 	// First we check if public key is in the room
 	peers := peerDetails.GetPeersInRoom(message.RoomID)
+	fmt.Println(peers)
+	fmt.Println(message)
 	for _, peer := range peers {
 		log.Printf("Peers Public Key: %s\nMessage Public Key: %s\n", peer.PublicKey, message.PublicKey)
 		if message.PublicKey == peer.PublicKey || disableAuth {
@@ -318,6 +320,7 @@ func handleConnection(conn net.Conn) {
 
 	responseMessage := "Public Key Not Found In Allow List!"
 	conn.Write([]byte(responseMessage)) // Send response to the client
+	conn.Close()
 
 }
 
@@ -567,7 +570,7 @@ func SendBlockchainToStatCollector(roomID string, port int, isAttacker bool) {
 	var statCollectorPublicKey string = "0000005ed266dc58d687b6ed84af4b4657162033cf379e9d8299bba941ae66e0"
 
 	// Read blockchain data from file
-	blockchainFilePath := fmt.Sprintf("./data/%s/blockchain.json", roomID)
+	blockchainFilePath := fmt.Sprintf("src/simulations/gossip_tests/main/data/%s/blockchain.json", roomID)
 	blockchainData, err := os.ReadFile(blockchainFilePath)
 	if err != nil {
 		log.Printf("Error reading blockchain file %s: %v\n", blockchainFilePath, err)
@@ -713,10 +716,12 @@ func SendMessage(messageContent string, roomID string, port uint64, typeofmessag
 
 			// Create the message struct
 			message := Message{
-				PublicKey: publicKeyHex,
-				Message:   messageContent,
-				Type:      typeofmessage,
-				Timestamp: uint64(time.Now().Unix()),
+				PublicKey:        publicKeyHex,
+				Message:          messageContent,
+				Type:             typeofmessage,
+				RoomID:           roomID,
+				DigitalSignature: hex.EncodeToString(SignMessage([]byte(messageContent))),
+				Timestamp:        uint64(time.Now().Unix()),
 			}
 
 			// Dial peer
@@ -772,6 +777,7 @@ func SendMessage(messageContent string, roomID string, port uint64, typeofmessag
 //   - typeofmessage: The type of message
 //   - maxNodes: Maximum number of nodes to send the message to (0 = all nodes)
 func SendMessageToLimitedNodes(messageContent string, roomID string, port uint64, typeofmessage string, maxNodes int) error {
+	fmt.Printf("DEBUG: SendMessageToLimitedNodes called with roomID: '%s'\n", roomID)
 	peers := peerDetails.GetPeersInRoom(roomID)
 
 	if len(peers) == 0 {
@@ -790,16 +796,26 @@ func SendMessageToLimitedNodes(messageContent string, roomID string, port uint64
 		log.Fatal("ED25519_PUBLIC_KEY is not set in .env file")
 	}
 
+	// Filter out the sender's own public key to avoid sending to self
+	var filteredPeers []peerDetails.Peer
+	for _, peer := range peers {
+		if peer.PublicKey != publicKeyHex {
+			filteredPeers = append(filteredPeers, peer)
+		}
+	}
+
+	fmt.Printf("🔍 Filtered out sender's own public key. Available peers: %d\n", len(filteredPeers))
+
 	// Determine how many nodes to send to
 	var selectedPeers []peerDetails.Peer
-	if maxNodes == 0 || maxNodes >= len(peers) {
-		// Send to all peers (same as original SendMessage)
-		selectedPeers = peers
+	if maxNodes == 0 || maxNodes >= len(filteredPeers) {
+		// Send to all filtered peers
+		selectedPeers = filteredPeers
 		fmt.Printf("📡 Sending message to ALL %d peers (maxNodes=%d)\n", len(selectedPeers), maxNodes)
 	} else {
-		// Select random subset of peers
-		selectedPeers = selectRandomPeers(peers, maxNodes)
-		fmt.Printf("🎲 Sending message to %d random peers out of %d (maxNodes=%d)\n", len(selectedPeers), len(peers), maxNodes)
+		// Select random subset of filtered peers
+		selectedPeers = selectRandomPeers(filteredPeers, maxNodes)
+		fmt.Printf("🎲 Sending message to %d random peers out of %d (maxNodes=%d)\n", len(selectedPeers), len(filteredPeers), maxNodes)
 	}
 
 	var wg sync.WaitGroup
@@ -811,11 +827,15 @@ func SendMessageToLimitedNodes(messageContent string, roomID string, port uint64
 
 			// Create the message struct
 			message := Message{
-				PublicKey: publicKeyHex,
-				Message:   messageContent,
-				Type:      typeofmessage,
-				Timestamp: uint64(time.Now().Unix()),
+				PublicKey:        publicKeyHex,
+				Message:          messageContent,
+				Type:             typeofmessage,
+				RoomID:           roomID,
+				DigitalSignature: hex.EncodeToString(SignMessage([]byte(messageContent))),
+				Timestamp:        uint64(time.Now().Unix()),
 			}
+
+			fmt.Printf("DEBUG: Created message with RoomID: '%s'\n", message.RoomID)
 
 			// Dial peer
 			fmt.Printf("Establishing connection with %s, %s.......\n", peer.IP, peer.PublicKey)

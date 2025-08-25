@@ -3,68 +3,25 @@ package gossip_test_VM3
 import (
 	"blockchain-p2p-messenger/src/derivationFunctions"
 	"blockchain-p2p-messenger/src/network"
+	gossipnetwork "blockchain-p2p-messenger/src/network_gossip"
 
 	"blockchain-p2p-messenger/src/peerDetails"
 	"fmt"
-	"log"
-	"net"
+
 )
 var publicKey_VM1 string = "0000040cd8e7f870ff1146e03589b988d82aedb6464c5085a9aba945e60c4fcd"
 var publicKey2_VM2 string = "927c78b7fa731c2b2f642a1de2fb3318f70bbb142465a75a8802a90e1a526285"
 var publicKey3_VM3 string = "9356e1f92f5adff2ab05115d54aff4b8c756d604704b5ddd71ff320f2d5aeecb"
-var PublicKey4_VM4 string = "0000005ed266dc58d687b6ed84af4b4657162033cf379e9d8299bba941ae66e0"
+var publicKey4_VM4 string = "0000005ed266dc58d687b6ed84af4b4657162033cf379e9d8299bba941ae66e0"
 var isAdmin bool = false
 var roomID string = "room-xyz-987" // mock room IDd
-
-
-func main() {
-
-	// Singular Attackers
-	RunGossipTestControlVM3(false, 1)
-
-	// A=1 F=2
-	RunGossipTestControlVM3(false, 2)
-
-	// A=1 F=3
-	RunGossipTestControlVM3(false, 3)
-
-
-	// ReceiveStartMessage(3002)
-
-	// // A=1 F=1
-	// RunGossipTestControlVM3(false, 1)
-
-	// A=1 F=2
-	// RunGossipTestControlVM1(false)
-
-	// // A=1 F=3
-	// RunGossipTestControlVM1(false)
-
-	// // A=2 F=1
-	// RunGossipTestControlVM1(true)
-
-	// // A=2 F=2
-	// RunGossipTestControlVM1(true)
-	
-	// // A=2 F=3
-	// RunGossipTestControlVM1(true)
-
-	// // A=3 F=1
-	// RunGossipTestControlVM1(true)
-
-	// // A=3 F=2
-	// RunGossipTestControlVM1(true)
-	
-	// // A=3 F=3
-	// RunGossipTestControlVM1(true)
-}
 
 
 func RunGossipTestControlVM3(runAsAttacker bool, fanout int){
 	peerDetails.AddPeer(publicKey_VM1, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey_VM1), isAdmin, roomID)
 	peerDetails.AddPeer(publicKey2_VM2, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey2_VM2), isAdmin, roomID)
 	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), isAdmin, roomID)
-	peerDetails.AddPeer(PublicKey4_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(PublicKey4_VM4), isAdmin, roomID)
+	peerDetails.AddPeer(publicKey4_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey4_VM4), isAdmin, roomID)
 
 	
 
@@ -80,48 +37,36 @@ func RunGossipTestControlVM3(runAsAttacker bool, fanout int){
 }
 
 
+func RunGossipTestCaseVM1() {
+	// Setup Peers
+	peerDetails.AddPeer(publicKey_VM1, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey_VM1), true, roomID)
+	peerDetails.AddPeer(publicKey2_VM2, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey2_VM2), false, roomID)
+	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), false, roomID)
+	peerDetails.AddPeer(publicKey4_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey4_VM4), false, roomID)
 
-// func RunGossipTestImplementationVM3(runAsAttacker bool){
-// 	peerDetails.AddPeer(publicKey_VM1, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey_VM1), isAdmin, roomID)
-// 	peerDetails.AddPeer(publicKey2_VM2, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey2_VM2), isAdmin, roomID)
-// 	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), isAdmin, roomID)
-// 	peerDetails.AddPeer(PublicKey4_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(PublicKey4_VM4), isAdmin, roomID)
-	
+	// Network configuration parameters
+	port := uint64(3000)
+	toggleAttacker := false
+	toggleBlockchain := false
+	noAckBlockchainSave := true
+	injectSpam := false
+	disableAckSending := false
+	forwardingFanout := 0 // Default: forward to all peers
 
-// 	gossipNet, err := gossipnetwork.InitializeGossipNetwork(roomID, 3000, runAsAttacker)
+	fmt.Printf("🚀 VM1: Initializing Gossip Test Case 1 (New Gossip Network)\n")
+	fmt.Printf("   Room ID: %s\n", roomID)
+	fmt.Printf("   Port: %d\n", port)
+	fmt.Printf("   Blockchain: %t\n", toggleBlockchain)
+	fmt.Printf("   No ACK Blockchain Save: %t\n", noAckBlockchainSave)
+	fmt.Printf("   Inject Spam: %t\n", injectSpam)
+	fmt.Printf("   Disable ACK Sending: %t\n", disableAckSending)
+	fmt.Printf("   Forwarding Fanout: %d (0 = all peers)\n", forwardingFanout)
 
-// 	if (err != nil){
-// 		fmt.Println(err)
-// 		return
-// 	}
-
-// 	// gossip message is sent from here to random nodes on network
-// 	gossipNet.GossipMessage("chat", "broadcast", "I hope I don't get censored!", 0, roomID, "")
-
-// }
+	gossipnetwork.InitializeGossipNetwork(roomID, port, toggleAttacker, toggleBlockchain, noAckBlockchainSave, injectSpam, disableAckSending, forwardingFanout)
 
 
-func ReceiveStartMessage(port int) {
-	var yggdrasilNodeInfo = network.GetYggdrasilNodeInfo()
 
-	address := fmt.Sprintf("[%s]:%d", yggdrasilNodeInfo.Address, port)
-	listener, err := net.Listen("tcp", address)
-	if err != nil {
-		log.Fatalf("Failed to listen on port %d: %v", port, err)
-	}
-	defer listener.Close()
-
-	log.Printf("Listening on %s for start message", address)
-
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			log.Printf("Failed to accept connection: %v", err)
-			continue
-		}
-
-		// Handle the connection in a goroutine
-		defer conn.Close()
-	}
+	fmt.Println("✅ VM1: Gossip Test Case 2 (New Gossip Network) initialized successfully")
 }
+
 

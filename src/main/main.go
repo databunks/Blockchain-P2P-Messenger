@@ -78,10 +78,12 @@ func main() {
 	// 	// gossipNet.GossipMessage("chat", "direct", "Private message!", 16750950217577629675, roomID)
 	// }()
 
-	// network.InitializeNetwork(roomID, true)
+	
 
 	// consensustestsVM1.RunConsensusTestCase1VM1()
 	gossip_test_VM1.RunGossipTestControlVM1()
+
+
 	
 
 
