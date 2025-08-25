@@ -802,7 +802,10 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 		// Handle clear blockchain command
 		fmt.Printf("Received clear blockchain command: %s\n", msg.Data)
 
-		// Clear the blockchain for this room
+		// Clear the blockchain for this room from memory
+		blockchain.ClearBlockchain(msg.RoomID)
+
+		// Clear the blockchain file for this room
 		err := clearBlockchainForRoom(msg.RoomID)
 		if err != nil {
 			fmt.Printf("Failed to clear blockchain: %v\n", err)

@@ -186,3 +186,13 @@ func GetBlockchain(roomID string) []Block {
 	}
 	return []Block{}
 }
+
+// ClearBlockchain clears the blockchain data for a specific room from memory
+func ClearBlockchain(roomID string) {
+	delete(blockchains, roomID)
+}
+
+// ClearAllBlockchains clears all blockchain data from memory
+func ClearAllBlockchains() {
+	blockchains = make(map[string][]Block)
+}
