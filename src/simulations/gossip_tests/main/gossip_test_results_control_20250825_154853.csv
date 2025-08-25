@@ -99,3 +99,4 @@ Run,Reachability(%),Latency(ms),MessageOverhead,AttackSuccess,CompletionTime
 98,50.0,98,0,true,15:48:46.775
 99,50.0,50,0,true,15:48:50.778
 SUMMARY,100.0,99,99,Attack Success Rate (%),15:48:53.781
+fanout = 1

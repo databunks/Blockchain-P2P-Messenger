@@ -670,7 +670,9 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 		fmt.Printf("📨 Processing chat message: %s\n", msg.Data)
 
 		// Send message receipt to gossip stat collector if it's the censored message
-		if strings.Contains(msg.Data, "Official group chat message!") {
+		// Only send receipt if this is NOT our own message (to avoid duplicate receipts)
+		currentNodeInfo := GetYggdrasilNodeInfo()
+		if strings.Contains(msg.Data, "Official group chat message!") && msg.PublicKey != currentNodeInfo.Key {
 			fmt.Printf("📤 Sending message receipt to gossip stat collector...\n")
 			sendGossipMessageReceipt(msg.PublicKey, msg.RoomID)
 		}

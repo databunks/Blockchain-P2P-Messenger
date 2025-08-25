@@ -270,13 +270,13 @@ func recordRunMetrics(completed bool) {
 // waitForTestCompletion waits for all runs to finish
 func waitForTestCompletion() {
 	for currentRun < totalRuns {
-		// Wait for current run to complete with timeout
-		timeout := time.After(1 * time.Second) // 1 second timeout per run
+		// Wait for current run to complete with timeout (increased to account for cleanup)
+		timeout := time.After(5 * time.Second) // 5 second timeout per run
 		runCompleted := false
 		for isTestRunning && !isRunComplete() {
 			select {
 			case <-timeout:
-				fmt.Printf("⚠️  Run %d timed out after 1 second, moving to next run\n", currentRun)
+				fmt.Printf("⚠️  Run %d timed out after 5 seconds, moving to next run\n", currentRun)
 				testRunningMutex.Lock()
 				isTestRunning = false
 				testRunningMutex.Unlock()
@@ -292,8 +292,50 @@ func waitForTestCompletion() {
 			runCompleted = true
 		}
 
+		// Wait a bit for any late receipts to arrive
+		time.Sleep(1 * time.Second)
+
+		// Check if run completed successfully after waiting for late receipts
+		if !isTestRunning && isRunComplete() {
+			runCompleted = true
+		}
+
+		// Debug: Print current state before recording metrics
+		nodeMessageReceiptsMutex.Lock()
+		receiptCount := len(nodeMessageReceipts)
+		receiptKeys := make([]string, 0, len(nodeMessageReceipts))
+		for key := range nodeMessageReceipts {
+			receiptKeys = append(receiptKeys, key[:16]+"...")
+		}
+		nodeMessageReceiptsMutex.Unlock()
+		fmt.Printf("🔍 DEBUG: Run %d - Receipts: %d/%d, Completed: %t, TestRunning: %t, Keys: %v\n",
+			currentRun, receiptCount, expectedReachability, runCompleted, isTestRunning, receiptKeys)
+
 		// Record metrics for this run (whether completed or timed out)
 		recordRunMetrics(runCompleted)
+
+		// Clear message tracking on all VMs after recording metrics
+		fmt.Printf("🧹 Clearing message tracking on all VMs for next run...\n")
+		clearStartTime := time.Now()
+		clearMessagesOnAllVMs()
+		clearDuration := time.Since(clearStartTime).Milliseconds()
+		fmt.Printf("⏱️  Message clearing completed in %d ms\n", clearDuration)
+
+		// Debug: Check if any receipts came in during clearing
+		nodeMessageReceiptsMutex.Lock()
+		receiptsAfterClear := len(nodeMessageReceipts)
+		nodeMessageReceiptsMutex.Unlock()
+		if receiptsAfterClear > 0 {
+			fmt.Printf("⚠️  WARNING: %d receipts received during clearing phase\n", receiptsAfterClear)
+		}
+
+		// Wait briefly for cleanup to prevent cross-run contamination
+		fmt.Printf("⏳ Waiting 3 seconds for message cleanup and isolation...\n")
+		time.Sleep(3 * time.Second)
+
+		// Brief barrier to ensure complete isolation
+		fmt.Printf("🚧 Ensuring complete run isolation...\n")
+		time.Sleep(3 * time.Second)
 
 		if currentRun < totalRuns {
 			// Start next run
@@ -312,8 +354,9 @@ func processMessageForGossip(msg string, nodeID string) {
 	testRunning := isTestRunning
 	testRunningMutex.Unlock()
 
+	// Allow processing messages even if test is not running (for cleanup phase receipts)
 	if !testRunning {
-		return
+		fmt.Printf("📨 Late receipt received from %s (test not running, but counting anyway)\n", nodeID[:16]+"...")
 	}
 
 	// Increment message count for current run
@@ -343,23 +386,8 @@ func processMessageForGossip(msg string, nodeID string) {
 
 		fmt.Printf("Run %d: All %d messages received, run completed successfully\n", currentRun, expectedReachability)
 
-		// Wait briefly to ensure all messages are properly sent before clearing
+		// Wait briefly to ensure all messages are properly sent
 		fmt.Printf("⏳ Waiting 3 seconds to ensure all messages are sent...\n")
-		time.Sleep(3 * time.Second)
-
-		// Clear message tracking on all VMs before next run
-		fmt.Printf("🧹 Clearing message tracking on all VMs for next run...\n")
-		clearStartTime := time.Now()
-		clearMessagesOnAllVMs()
-		clearDuration := time.Since(clearStartTime).Milliseconds()
-		fmt.Printf("⏱️  Message clearing completed in %d ms\n", clearDuration)
-
-		// Wait briefly for cleanup to prevent cross-run contamination
-		fmt.Printf("⏳ Waiting 3 seconds for message cleanup and isolation...\n")
-		time.Sleep(3 * time.Second)
-
-		// Brief barrier to ensure complete isolation
-		fmt.Printf("🚧 Ensuring complete run isolation...\n")
 		time.Sleep(3 * time.Second)
 	}
 }
