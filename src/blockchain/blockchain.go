@@ -22,7 +22,7 @@ var blockchains = make(map[string][]Block) // roomID -> []Block
 
 func init() {
 	// Create data directory if it doesn't exist
-	if err := os.MkdirAll("../data", 0755); err != nil {
+	if err := os.MkdirAll("./data", 0755); err != nil {
 		panic(err)
 	}
 }
@@ -85,7 +85,7 @@ func ReplaceChain(newBlocks []Block, roomID string) error {
 
 // SaveBlockchainToFile saves the current blockchain to a file
 func SaveBlockchainToFile(roomID string) error {
-	roomDir := filepath.Join("../data", roomID)
+	roomDir := filepath.Join("./data", roomID)
 	if err := os.MkdirAll(roomDir, 0755); err != nil {
 		return err
 	}
@@ -121,7 +121,7 @@ func LoadBlockchainFromFile(roomID string) error {
 		return nil // Already loaded
 	}
 
-	roomDir := filepath.Join("../data", roomID)
+	roomDir := filepath.Join("./data", roomID)
 	if err := os.MkdirAll(roomDir, 0755); err != nil {
 		return err
 	}

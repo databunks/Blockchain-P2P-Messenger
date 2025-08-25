@@ -951,6 +951,7 @@ func sendClearBlockchainCommand(vmName, address string) {
 		"type":      "clear_blockchain",
 		"run":       currentRun,
 		"timestamp": time.Now().Unix(),
+		"room_id":   "room-xyz-987", // Add room ID for the clear command
 	}
 
 	// Marshal and send command

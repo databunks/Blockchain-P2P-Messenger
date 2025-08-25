@@ -1164,7 +1164,7 @@ func PublicKeyToNodeID(hexStr string) uint64 {
 
 // clearBlockchainForRoom clears the blockchain file for a specific room
 func clearBlockchainForRoom(roomID string) error {
-	blockchainPath := fmt.Sprintf("../data/%s/blockchain.json", roomID)
+	blockchainPath := fmt.Sprintf("./data/%s/blockchain.json", roomID)
 
 	fmt.Printf("🧹 Clearing blockchain for room: %s\n", roomID)
 
