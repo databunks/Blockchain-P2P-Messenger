@@ -181,8 +181,8 @@ func handleCommand(conn net.Conn) {
 		go executeGossipSequence(runNumber)
 	} else if commandType == "clear_blockchain" {
 		runNumber := int(command["run"].(float64))
-		fmt.Printf("VM1: 🚨 RECEIVED CLEAR BLOCKCHAIN COMMAND for run %d\n", runNumber)
-		fmt.Printf("VM1: ⏰ Current time: %s\n", time.Now().Format("15:04:05.000"))
+		fmt.Printf("VM1: RECEIVED CLEAR BLOCKCHAIN COMMAND for run %d\n", runNumber)
+		fmt.Printf("VM1: Current time: %s\n", time.Now().Format("15:04:05.000"))
 
 		// Clear VM1's own blockchain
 		err := clearBlockchain()
@@ -232,7 +232,7 @@ func executeGossipSequence(runNumber int) {
 func clearBlockchain() error {
 	blockchainPath := fmt.Sprintf("data/%s/blockchain.json", globalRoomID)
 
-	fmt.Printf("VM1: 🧹 Clearing blockchain for room: %s\n", globalRoomID)
+	fmt.Printf("VM1: Clearing blockchain for room: %s\n", globalRoomID)
 
 	// Read the current blockchain to preserve genesis and peer blocks
 	blockchainData, err := os.ReadFile(blockchainPath)
@@ -285,6 +285,6 @@ func clearBlockchain() error {
 		return fmt.Errorf("failed to write preserved blockchain: %v", err)
 	}
 
-	fmt.Printf("VM1: ✅ Blockchain cleared - kept genesis and peer blocks, removed chat messages\n")
+	fmt.Printf("VM1: Blockchain cleared - kept genesis and peer blocks, removed chat messages\n")
 	return nil
 }

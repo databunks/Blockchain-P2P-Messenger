@@ -28,7 +28,7 @@ var consensusStartTime time.Time // Time when first blockchain is received (cons
 
 // Consensus mode toggle
 var consensusMode string = "control" // "control" for 4 nodes, "ack" for 3 nodes
-var expectedBlockchains int = 12 // 12 for control mode (4 VMs × 3 messages), 3 for ACK mode
+var expectedBlockchains int = 12     // 12 for control mode (4 VMs × 3 messages), 3 for ACK mode
 
 var consensusMutex sync.Mutex
 var isTestRunning bool = false
@@ -142,12 +142,12 @@ func startNewRun() {
 	nodeBlockchains = make(map[string][]string)
 
 	// Verify complete run isolation - ensure no old messages remain
-	fmt.Printf("🔍 Verifying complete run isolation...\n")
+	fmt.Printf("Verifying complete run isolation...\n")
 	if len(nodeBlockchains) > 0 {
-		fmt.Printf("⚠️  WARNING: Old blockchains detected! Clearing again...\n")
+		fmt.Printf("WARNING: Old blockchains detected! Clearing again...\n")
 		nodeBlockchains = make(map[string][]string)
 	}
-	fmt.Printf("✅ Run isolation verified - clean slate for run %d\n", currentRun)
+	fmt.Printf("Run isolation verified - clean slate for run %d\n", currentRun)
 
 	fmt.Printf("\n=== STARTING RUN %d/%d ===\n", currentRun, totalRuns)
 	fmt.Printf("Expected: %d blockchains (Mode: %s)\n", expectedBlockchains, consensusMode)
@@ -306,11 +306,11 @@ func processMessageForConsensus(msg string, nodeID string) {
 		fmt.Printf("Run %d: All %d blockchains received, assessing consensus integrity...\n", currentRun, expectedBlockchains)
 
 		// Assess consensus integrity for this run
-		fmt.Printf("⏱️  Starting consensus assessment...\n")
+		fmt.Printf("Starting consensus assessment...\n")
 		consensusAssessmentStart := time.Now()
 		integrityScore := assessConsensusIntegrity()
 		consensusDuration := time.Since(consensusAssessmentStart).Milliseconds()
-		fmt.Printf("⏱️  Consensus assessment completed in %d ms\n", consensusDuration)
+		fmt.Printf("Consensus assessment completed in %d ms\n", consensusDuration)
 		consensusIntegrityResults = append(consensusIntegrityResults, integrityScore)
 
 		// Calculate and store latency for this run (EXCLUDING all custom delays)
@@ -322,12 +322,12 @@ func processMessageForConsensus(msg string, nodeID string) {
 		totalLatency := allBlockchainsReceivedTime.Sub(runStartTime).Milliseconds()
 
 		// DEBUG: Show exact timestamps for debugging
-		fmt.Printf("🔍 DEBUG TIMESTAMPS:\n")
+		fmt.Printf("DEBUG TIMESTAMPS:\n")
 		fmt.Printf("   - runStartTime: %s\n", runStartTime.Format("15:04:05.000"))
 		fmt.Printf("   - allBlockchainsReceivedTime: %s\n", allBlockchainsReceivedTime.Format("15:04:05.000"))
 		fmt.Printf("   - Time difference: %d ms\n", totalLatency)
 
-		fmt.Printf("⏱️  TIMING BREAKDOWN:\n")
+		fmt.Printf("TIMING BREAKDOWN:\n")
 		fmt.Printf("   - Complete gossip sequence: %d ms (command → all blockchains)\n", totalLatency)
 		fmt.Printf("   - Consensus assessment only: %d ms\n", consensusDuration)
 		fmt.Printf("   - Message propagation time: %d ms\n", totalLatency)
@@ -354,28 +354,28 @@ func processMessageForConsensus(msg string, nodeID string) {
 		attackSuccessRates = append(attackSuccessRates, attackSuccess)
 
 		if attackSuccess {
-			fmt.Printf("Run %d: Consensus Integrity: %.2f%% < %.0f%% → 🚨 ATTACK SUCCESSFUL (Latency: %d ms)\n", currentRun, integrityScore*100, attackThreshold*100, runLatency)
+			fmt.Printf("Run %d: Consensus Integrity: %.2f%% < %.0f%% → ATTACK SUCCESSFUL (Latency: %d ms)\n", currentRun, integrityScore*100, attackThreshold*100, runLatency)
 		} else {
-			fmt.Printf("Run %d: Consensus Integrity: %.2f%% >= %.0f%% → ✅ ATTACK FAILED (Latency: %d ms)\n", currentRun, integrityScore*100, attackThreshold*100, runLatency)
+			fmt.Printf("Run %d: Consensus Integrity: %.2f%% >= %.0f%% → ATTACK FAILED (Latency: %d ms)\n", currentRun, integrityScore*100, attackThreshold*100, runLatency)
 		}
 
 		// Wait briefly to ensure all blockchains are properly sent before clearing
-		fmt.Printf("⏳ Waiting 2 seconds to ensure all blockchains are sent...\n")
+		fmt.Printf("Waiting 2 seconds to ensure all blockchains are sent...\n")
 		time.Sleep(2 * time.Second)
 
 		// Clear blockchains on all VMs before next run
-		fmt.Printf("🧹 Clearing blockchains on all VMs for next run...\n")
+		fmt.Printf("Clearing blockchains on all VMs for next run...\n")
 		clearStartTime := time.Now()
 		clearBlockchainsOnAllVMs()
 		clearDuration := time.Since(clearStartTime).Milliseconds()
-		fmt.Printf("⏱️  Blockchain clearing completed in %d ms\n", clearDuration)
+		fmt.Printf("Blockchain clearing completed in %d ms\n", clearDuration)
 
 		// Wait briefly for cleanup to prevent cross-run contamination
-		fmt.Printf("⏳ Waiting 3 seconds for blockchain cleanup and isolation...\n")
+		fmt.Printf("Waiting 3 seconds for blockchain cleanup and isolation...\n")
 		time.Sleep(3 * time.Second)
 
 		// Brief barrier to ensure complete isolation
-		fmt.Printf("🚧 Ensuring complete run isolation...\n")
+		fmt.Printf("Ensuring complete run isolation...\n")
 		time.Sleep(1 * time.Second)
 	}
 }
@@ -398,11 +398,11 @@ func assessConsensusIntegrity() float64 {
 
 	// Extract final block hashes from each honest node
 	// Since we now have unique node IDs, we need to find blockchains by looking at all stored data
-	fmt.Printf("   🔍 Total stored blockchains: %d\n", len(nodeBlockchains))
-	fmt.Printf("   🔍 Available node keys: %v\n", getMapKeys(nodeBlockchains))
+	fmt.Printf("   Total stored blockchains: %d\n", len(nodeBlockchains))
+	fmt.Printf("   Available node keys: %v\n", getMapKeys(nodeBlockchains))
 
 	// Debug: Show what's actually stored
-	fmt.Printf("   🔍 DEBUG: Contents of nodeBlockchains:\n")
+	fmt.Printf("   DEBUG: Contents of nodeBlockchains:\n")
 	for nodeID, blockchains := range nodeBlockchains {
 		if len(blockchains) > 0 {
 			fmt.Printf("     * %s: %d blockchain(s)\n", nodeID[:16]+"...", len(blockchains))
@@ -411,7 +411,7 @@ func assessConsensusIntegrity() float64 {
 
 	// For consensus integrity, we compare ALL blockchains (including attacker nodes)
 	// This gives us the true picture of consensus disruption
-	fmt.Printf("   🔍 Collecting final block hashes from ALL nodes (including attacker)...\n")
+	fmt.Printf("   Collecting final block hashes from ALL nodes (including attacker)...\n")
 
 	blockchainHashes := make([]string, 0)
 	for nodeID, blockchains := range nodeBlockchains {
@@ -443,21 +443,21 @@ func assessConsensusIntegrity() float64 {
 			}
 		}
 
-		fmt.Printf("   🎯 Using majority consensus hash: %s... (appears %d times)\n", referenceHash[:16], maxCount)
+		fmt.Printf("   Using majority consensus hash: %s... (appears %d times)\n", referenceHash[:16], maxCount)
 
 		for i, hash := range blockchainHashes {
 			if hash == referenceHash {
 				consistentNodes++
-				fmt.Printf("   ✅ Blockchain %d: Hash matches majority consensus\n", i+1)
+				fmt.Printf("   Blockchain %d: Hash matches majority consensus\n", i+1)
 			} else {
-				fmt.Printf("   ❌ Blockchain %d: Hash mismatch - %s... vs %s...\n", i+1, hash[:16], referenceHash[:16])
+				fmt.Printf("   Blockchain %d: Hash mismatch - %s... vs %s...\n", i+1, hash[:16], referenceHash[:16])
 			}
 		}
 
 		// For consensus integrity, we want to know what percentage of blockchains are consistent
 		integrity = float64(consistentNodes) / float64(len(blockchainHashes))
 	} else {
-		fmt.Printf("   ❌ WARNING: No blockchain hashes found!\n")
+		fmt.Printf("   WARNING: No blockchain hashes found!\n")
 		integrity = 0.0
 	}
 
@@ -465,7 +465,7 @@ func assessConsensusIntegrity() float64 {
 	// but kept for debugging purposes
 
 	// Debug logging
-	fmt.Printf("🔍 Consensus Integrity Debug (Hash-based):\n")
+	fmt.Printf("Consensus Integrity Debug (Hash-based):\n")
 	fmt.Printf("   - Total blockchains received: %d\n", len(blockchainHashes))
 	fmt.Printf("   - Blockchains with matching hashes: %d\n", consistentNodes)
 	fmt.Printf("   - Integrity score: %.2f%%\n", integrity*100)
@@ -520,20 +520,20 @@ func compareBlockchains(blockchain1, blockchain2 string) bool {
 
 	// Compare number of blocks
 	if len(blocks1) != len(blocks2) {
-		fmt.Printf("   🔍 Block count mismatch: %d vs %d\n", len(blocks1), len(blocks2))
+		fmt.Printf("   Block count mismatch: %d vs %d\n", len(blocks1), len(blocks2))
 		return false
 	}
 
 	// Compare each block
 	for i, block1 := range blocks1 {
 		if i >= len(blocks2) {
-			fmt.Printf("   🔍 Block %d missing in second blockchain\n", i)
+			fmt.Printf("   Block %d missing in second blockchain\n", i)
 			return false
 		}
 
 		block2 := blocks2[i]
 		if !compareBlock(block1, block2) {
-			fmt.Printf("   🔍 Block %d content mismatch\n", i)
+			fmt.Printf("   Block %d content mismatch\n", i)
 			return false
 		}
 	}
@@ -563,7 +563,7 @@ func extractBlocksFromBlockchain(blockchainStr string) []string {
 	}
 
 	// Fallback: if JSON parsing fails, use string splitting (less accurate)
-	fmt.Printf("   ⚠️  JSON parsing failed, using fallback string splitting\n")
+	fmt.Printf("   JSON parsing failed, using fallback string splitting\n")
 
 	// Extract CHAT_MSG blocks
 	chatParts := strings.Split(blockchainStr, "CHAT_MSG{")
@@ -790,15 +790,15 @@ func handleBlockchainMessage(blockchainMsg map[string]interface{}) {
 	if dataStr, ok := data.(string); ok {
 		spamCount := strings.Count(dataStr, "SPAM_MSG{")
 		if spamCount > 0 {
-			fmt.Printf("🚨 SPAM DETECTED! Found %d spam messages in blockchain\n", spamCount)
-			fmt.Printf("🚨 Spam content: %s\n", dataStr)
+			fmt.Printf("SPAM DETECTED! Found %d spam messages in blockchain\n", spamCount)
+			fmt.Printf("Spam content: %s\n", dataStr)
 		}
 	}
 
 	// Store blockchain data for consensus analysis
-	fmt.Printf("🔗 Storing blockchain data for consensus analysis...\n")
+	fmt.Printf("Storing blockchain data for consensus analysis...\n")
 	storeBlockchainForConsensus(blockchainMsg)
-	fmt.Printf("✅ Blockchain data stored successfully\n")
+	fmt.Printf("Blockchain data stored successfully\n")
 
 	// Process for consensus testing
 	// Add a small delay to ensure blockchain data is fully stored before processing
@@ -814,7 +814,7 @@ func storeBlockchainForConsensus(blockchainMsg map[string]interface{}) {
 
 	// Validate that this message is from the current run
 	if !isTestRunning {
-		fmt.Printf("⚠️  Ignoring blockchain message - test not running (current run: %d)\n", currentRun)
+		fmt.Printf("Ignoring blockchain message - test not running (current run: %d)\n", currentRun)
 		return
 	}
 
@@ -855,7 +855,7 @@ func storeBlockchainForConsensus(blockchainMsg map[string]interface{}) {
 
 	if totalBlockchains == 1 {
 		consensusStartTime = time.Now()
-		fmt.Printf("⏱️  Consensus started at: %s (first blockchain received)\n", consensusStartTime.Format("15:04:05.000"))
+		fmt.Printf("Consensus started at: %s (first blockchain received)\n", consensusStartTime.Format("15:04:05.000"))
 	}
 
 	// fmt.Printf("💾 Stored blockchain for node %s (total: %d)\n", nodeID, len(nodeBlockchains[nodeID]))
@@ -871,7 +871,7 @@ func sendStartGossipingCommand() {
 	// Connect to VM1
 	conn, err := net.Dial("tcp", vm1Address)
 	if err != nil {
-		fmt.Printf("❌ Failed to connect to VM1: %v\n", err)
+		fmt.Printf("Failed to connect to VM1: %v\n", err)
 		return
 	}
 	defer conn.Close()
@@ -886,13 +886,13 @@ func sendStartGossipingCommand() {
 	// Marshal and send command
 	commandBytes, err := json.Marshal(startCommand)
 	if err != nil {
-		fmt.Printf("❌ Failed to marshal start command: %v\n", err)
+		fmt.Printf("Failed to marshal start command: %v\n", err)
 		return
 	}
 
 	_, err = conn.Write(commandBytes)
 	if err != nil {
-		fmt.Printf("❌ Failed to send start command to VM1: %v\n", err)
+		fmt.Printf("Failed to send start command to VM1: %v\n", err)
 		return
 	}
 
@@ -900,12 +900,12 @@ func sendStartGossipingCommand() {
 	buffer := make([]byte, 1024)
 	n, err := conn.Read(buffer)
 	if err != nil {
-		fmt.Printf("❌ Failed to read response from VM1: %v\n", err)
+		fmt.Printf("Failed to read response from VM1: %v\n", err)
 		return
 	}
 
 	response := string(buffer[:n])
-	fmt.Printf("✅ VM1 response: %s\n", response)
+	fmt.Printf("VM1 response: %s\n", response)
 }
 
 // setConsensusMode switches between control (4 nodes) and ACK (3 nodes) modes
@@ -914,13 +914,13 @@ func setConsensusMode(mode string) {
 	case "control":
 		consensusMode = "control"
 		expectedBlockchains = 12 // 4 VMs × 3 messages
-		fmt.Printf("🔧 Consensus mode set to CONTROL (expecting 12 blockchains)\n")
+		fmt.Printf("Consensus mode set to CONTROL (expecting 12 blockchains)\n")
 	case "ack":
 		consensusMode = "ack"
 		expectedBlockchains = 12 // All 4 VMs send blockchains
-		fmt.Printf("🔧 Consensus mode set to ACK (expecting 12 blockchains)\n")
+		fmt.Printf("Consensus mode set to ACK (expecting 12 blockchains)\n")
 	default:
-		fmt.Printf("❌ Invalid mode: %s. Using CONTROL mode (12 blockchains)\n", mode)
+		fmt.Printf("Invalid mode: %s. Using CONTROL mode (12 blockchains)\n", mode)
 		consensusMode = "control"
 		expectedBlockchains = 12
 	}
@@ -928,8 +928,8 @@ func setConsensusMode(mode string) {
 
 // clearBlockchainsOnAllVMs sends clear blockchain commands to all VMs
 func clearBlockchainsOnAllVMs() {
-	fmt.Printf("🚨 SENDING CLEAR BLOCKCHAIN COMMAND for run %d\n", currentRun)
-	fmt.Printf("⏰ Current time: %s\n", time.Now().Format("15:04:05.000"))
+	fmt.Printf("SENDING CLEAR BLOCKCHAIN COMMAND for run %d\n", currentRun)
+	fmt.Printf("Current time: %s\n", time.Now().Format("15:04:05.000"))
 
 	// Only VM1 has a command listener, so we only send to VM1
 	// VM1 will then gossip the clear command to other VMs
@@ -946,17 +946,17 @@ func clearBlockchainsOnAllVMs() {
 		}(vmName, address)
 	}
 	wg.Wait()
-	fmt.Println("🧹 Blockchain clear commands sent to VM1 (will gossip to others)")
+	fmt.Println("Blockchain clear commands sent to VM1 (will gossip to others)")
 }
 
 // sendClearBlockchainCommand sends a clear blockchain command to a specific VM
 func sendClearBlockchainCommand(vmName, address string) {
-	fmt.Printf("🧹 Sending clear blockchain command to %s at %s...\n", vmName, address)
+	fmt.Printf("Sending clear blockchain command to %s at %s...\n", vmName, address)
 
 	// Connect to VM
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
-		fmt.Printf("❌ Failed to connect to %s: %v\n", vmName, err)
+		fmt.Printf("Failed to connect to %s: %v\n", vmName, err)
 		return
 	}
 	defer conn.Close()
@@ -972,13 +972,13 @@ func sendClearBlockchainCommand(vmName, address string) {
 	// Marshal and send command
 	commandBytes, err := json.Marshal(clearCommand)
 	if err != nil {
-		fmt.Printf("❌ Failed to marshal clear command for %s: %v\n", vmName, err)
+		fmt.Printf("Failed to marshal clear command for %s: %v\n", vmName, err)
 		return
 	}
 
 	_, err = conn.Write(commandBytes)
 	if err != nil {
-		fmt.Printf("❌ Failed to send clear command to %s: %v\n", vmName, err)
+		fmt.Printf("Failed to send clear command to %s: %v\n", vmName, err)
 		return
 	}
 
@@ -986,12 +986,12 @@ func sendClearBlockchainCommand(vmName, address string) {
 	buffer := make([]byte, 1024)
 	n, err := conn.Read(buffer)
 	if err != nil {
-		fmt.Printf("❌ Failed to read response from %s: %v\n", vmName, err)
+		fmt.Printf("Failed to read response from %s: %v\n", vmName, err)
 		return
 	}
 
 	response := string(buffer[:n])
-	fmt.Printf("✅ %s response: %s\n", vmName, response)
+	fmt.Printf("%s response: %s\n", vmName, response)
 }
 
 // handleStringMessage processes legacy string messages

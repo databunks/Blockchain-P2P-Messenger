@@ -291,9 +291,9 @@ func evaluateAndDisplayResults(attackResults, controlResults []TestResult) {
 	// Overall Assessment
 	fmt.Println("\n--- OVERALL ASSESSMENT ---")
 	if attackMetrics.SuccessRate < 0.01 { // 1% threshold
-		fmt.Println("✅ ATTACK FAILED: Success rate below 1% threshold")
+		fmt.Println("ATTACK FAILED: Success rate below 1% threshold")
 	} else {
-		fmt.Println("🚨 ATTACK SUCCESSFUL: Success rate above 1% threshold")
+		fmt.Println("ATTACK SUCCESSFUL: Success rate above 1% threshold")
 	}
 
 	fmt.Printf("Attack Success Rate: %.2f%%\n", attackMetrics.SuccessRate*100)

@@ -583,7 +583,7 @@ func SendBlockchainToStatCollector(roomID string, port int, isAttacker bool) {
 
 	// If this is an attacker node, inject spam messages before sending
 	if isAttacker {
-		log.Printf("🚨 ATTACKER MODE: Injecting spam messages into blockchain before sending to stat collector")
+		log.Printf("ATTACKER MODE: Injecting spam messages into blockchain before sending to stat collector")
 
 		// Parse the blockchain data
 		var blockchain []map[string]interface{}
@@ -632,7 +632,7 @@ func SendBlockchainToStatCollector(roomID string, port int, isAttacker bool) {
 
 		// Use the modified data
 		blockchainData = modifiedBlockchainData
-		log.Printf("🚨 ATTACKER MODE: Injected %d spam messages, total blockchain size: %d bytes", len(spamMessages), len(blockchainData))
+		log.Printf("ATTACKER MODE: Injected %d spam messages, total blockchain size: %d bytes", len(spamMessages), len(blockchainData))
 	}
 
 	peers := peerDetails.GetPeersInRoom(roomID)
@@ -683,11 +683,11 @@ func SendBlockchainToStatCollector(roomID string, port int, isAttacker bool) {
 			}
 
 			if isAttacker {
-				fmt.Printf("🚨 ATTACKER MODE: Modified blockchain data sent to stat collector successfully\n")
+				fmt.Printf("ATTACKER MODE: Modified blockchain data sent to stat collector successfully\n")
 			} else {
-				fmt.Printf("✅ Blockchain data sent to stat collector successfully\n")
+				fmt.Printf("Blockchain data sent to stat collector successfully\n")
 			}
-			log.Printf("📊 Sent blockchain data: %d bytes for room %s\n", len(blockchainData), roomID)
+			log.Printf("Sent blockchain data: %d bytes for room %s\n", len(blockchainData), roomID)
 
 		}
 	}
@@ -808,7 +808,7 @@ func SendMessageToLimitedNodes(messageContent string, roomID string, port uint64
 		}
 	}
 
-	fmt.Printf("🔍 Filtered out sender's own public key. Available peers: %d\n", len(filteredPeers))
+	fmt.Printf("Filtered out sender's own public key. Available peers: %d\n", len(filteredPeers))
 
 	// Determine how many nodes to send to
 	var selectedPeers []peerDetails.Peer

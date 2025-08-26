@@ -15,7 +15,6 @@ var publicKey4_VM4 string = "0000005ed266dc58d687b6ed84af4b4657162033cf379e9d829
 var isAdmin bool = false
 var roomID string = "room-xyz-987" // mock room IDd
 
-
 func RunGossipTestControlVM2(runAsAttacker bool, fanout int) {
 	peerDetails.AddPeer(publicKey_VM1, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey_VM1), isAdmin, roomID)
 	peerDetails.AddPeer(publicKey2_VM2, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey2_VM2), isAdmin, roomID)
@@ -48,7 +47,7 @@ func RunGossipTestCaseVM2() {
 	disableAckSending := false
 	forwardingFanout := 0 // Default: forward to all peers
 
-	fmt.Printf("🚀 VM1: Initializing Gossip Test Case 1 (New Gossip Network)\n")
+	fmt.Printf("VM1: Initializing Gossip Test Case 1 (New Gossip Network)\n")
 	fmt.Printf("   Room ID: %s\n", roomID)
 	fmt.Printf("   Port: %d\n", port)
 	fmt.Printf("   Blockchain: %t\n", toggleBlockchain)
@@ -59,8 +58,5 @@ func RunGossipTestCaseVM2() {
 
 	gossipnetwork.InitializeGossipNetwork(roomID, port, toggleAttacker, toggleBlockchain, noAckBlockchainSave, injectSpam, disableAckSending, forwardingFanout)
 
-
-
-	fmt.Println("✅ VM1: Gossip Test Case 2 (New Gossip Network) initialized successfully")
+	fmt.Println("VM1: Gossip Test Case 2 (New Gossip Network) initialized successfully")
 }
-

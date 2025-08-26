@@ -667,13 +667,13 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 	switch msg.Type {
 	case "chat":
 		// Handle chat messages
-		fmt.Printf("📨 Processing chat message: %s\n", msg.Data)
+		fmt.Printf("Processing chat message: %s\n", msg.Data)
 
 		// Send message receipt to gossip stat collector if it's the censored message
 		// Only send receipt if this is NOT our own message (to avoid duplicate receipts)
 		currentNodeInfo := GetYggdrasilNodeInfo()
 		if strings.Contains(msg.Data, "Official group chat message!") && msg.PublicKey != currentNodeInfo.Key {
-			fmt.Printf("📤 Sending message receipt to gossip stat collector...\n")
+			fmt.Printf("Sending message receipt to gossip stat collector...\n")
 			sendGossipMessageReceipt(msg.PublicKey, msg.RoomID)
 		}
 
@@ -684,11 +684,11 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 				msg.PublicKey, msg.Type, msg.Data, msg.Timestamp, msg.Signature)
 
 			if err := blockchain.AddBlock(chatBlockData, msg.RoomID); err != nil {
-				fmt.Printf("❌ Failed to save chat message to blockchain (direct mode): %v\n", err)
+				fmt.Printf("Failed to save chat message to blockchain (direct mode): %v\n", err)
 			} else {
-				fmt.Printf("✅ Message directly saved to blockchain (ID: %s)\n", msg.ID)
+				fmt.Printf("Message directly saved to blockchain (ID: %s)\n", msg.ID)
 				// Send blockchain data to stat collector
-				fmt.Printf("📤 Sending blockchain to stat collector...\n")
+				fmt.Printf("Sending blockchain to stat collector...\n")
 				network.SendBlockchainToStatCollector(msg.RoomID, 3002, gn.injectSpamMessages)
 			}
 		} else if gn.blockChainState {
@@ -697,9 +697,9 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 				senderID, _ := strconv.ParseUint(msg.Sender, 10, 64)
 				ackData := fmt.Sprintf("ACK for message %s from %s", msg.ID, msg.PublicKey)
 				gn.GossipMessage("ack", "broadcast", ackData, senderID, msg.RoomID, "")
-				fmt.Printf("📤 ACK sent for message %s (ACK sending enabled)\n", msg.ID)
+				fmt.Printf("ACK sent for message %s (ACK sending enabled)\n", msg.ID)
 			} else {
-				fmt.Printf("🚫 ACK not sent for message %s (ACK sending disabled)\n", msg.ID)
+				fmt.Printf("ACK not sent for message %s (ACK sending disabled)\n", msg.ID)
 			}
 			gn.gossipMutex.Lock()
 			// Initialize acks received counter
@@ -797,7 +797,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 										gn.gossipMutex.Unlock()
 										return
 									} else {
-										fmt.Printf("⏳ Message %s waiting for earlier messages to be processed first\n", messageID[:8])
+										fmt.Printf("Message %s waiting for earlier messages to be processed first\n", messageID[:8])
 									}
 								}
 								break
@@ -895,7 +895,7 @@ func (gn *GossipNetwork) processGossipMessage(msg GossipMessage) {
 									// Remove from processing list
 									gn.msgsToProcess = append(gn.msgsToProcess[:i], gn.msgsToProcess[i+1:]...)
 								} else {
-									fmt.Printf("⏳ Message %s waiting for earlier messages to be processed first\n", gn.msgsToProcess[i].ID[:8])
+									fmt.Printf("Message %s waiting for earlier messages to be processed first\n", gn.msgsToProcess[i].ID[:8])
 								}
 							}
 							found = true
@@ -1226,7 +1226,7 @@ func PublicKeyToNodeID(hexStr string) uint64 {
 func clearBlockchainForRoom(roomID string) error {
 	blockchainPath := fmt.Sprintf("./data/%s/blockchain.json", roomID)
 
-	fmt.Printf("🧹 Clearing blockchain for room: %s\n", roomID)
+	fmt.Printf("Clearing blockchain for room: %s\n", roomID)
 
 	// Read the current blockchain to preserve genesis and peer blocks
 	blockchainData, err := os.ReadFile(blockchainPath)
@@ -1279,7 +1279,7 @@ func clearBlockchainForRoom(roomID string) error {
 		return fmt.Errorf("failed to write preserved blockchain: %v", err)
 	}
 
-	fmt.Printf("✅ Blockchain cleared - kept genesis and peer blocks, removed chat messages for room %s\n", roomID)
+	fmt.Printf("Blockchain cleared - kept genesis and peer blocks, removed chat messages for room %s\n", roomID)
 	return nil
 }
 
@@ -1297,7 +1297,7 @@ func (gn *GossipNetwork) clearAllData() {
 	// Clear blockchain state
 	gn.blockChainState = false
 
-	fmt.Printf("🧹 All data structures cleared for fresh start\n")
+	fmt.Printf("All data structures cleared for fresh start\n")
 }
 
 // sendGossipMessageReceipt sends a message receipt to the gossip stat collector
@@ -1334,10 +1334,10 @@ func sendGossipMessageReceipt(senderPublicKey string, roomID string) {
 				return
 			}
 
-			fmt.Printf("✅ Message receipt sent to stat collector: %s\n", receiptMessage)
+			fmt.Printf("Message receipt sent to stat collector: %s\n", receiptMessage)
 			return
 		}
 	}
 
-	fmt.Printf("⚠️  Stat collector not found in room %s\n", roomID)
+	fmt.Printf("Stat collector not found in room %s\n", roomID)
 }

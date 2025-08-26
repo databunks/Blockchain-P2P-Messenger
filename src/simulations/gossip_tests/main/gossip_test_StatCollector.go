@@ -23,8 +23,8 @@ var lastMessageReceivedTime time.Time // Time when last message was received
 
 // Gossip mode toggle
 var gossipMode string = "attack" // "control" for normal operation, "attack" for attack scenario
-var expectedNodes int = 4         // Total number of nodes in the network
-var expectedReachability int = 3  // Expected number of nodes to receive the message
+var expectedNodes int = 4        // Total number of nodes in the network
+var expectedReachability int = 3 // Expected number of nodes to receive the message
 
 // Gossip testing mutexes
 var gossipMutex sync.Mutex
@@ -273,7 +273,7 @@ func recordRunMetrics(completed bool) {
 	// Display run results
 	if completed {
 		if attackSuccess {
-			fmt.Printf("Run %d: Reachability: %.1f%% < 100%% → 🚨 ATTACK SUCCESSFUL (Latency: %d ms, Overhead: %d msgs)\n",
+			fmt.Printf("Run %d: Reachability: %.1f%% < 100%% → ATTACK SUCCESSFUL (Latency: %d ms, Overhead: %d msgs)\n",
 				currentRun, reachability*100, latency, overhead)
 		} else {
 			fmt.Printf("Run %d: Reachability: %.1f%% >= 100%% - ATTACK FAILED (Latency: %d ms, Overhead: %d msgs)\n",
@@ -433,7 +433,7 @@ func calculateReachability() float64 {
 	receivedCount := len(nodeMessageReceipts)
 	reachability := float64(receivedCount) / float64(expectedReachability)
 
-	fmt.Printf("   📊 Reachability Calculation:\n")
+	fmt.Printf("   Reachability Calculation:\n")
 	fmt.Printf("      - Nodes that received message: %d\n", receivedCount)
 	fmt.Printf("      - Expected reachability: %d\n", expectedReachability)
 	fmt.Printf("      - Reachability: %.1f%%\n", reachability*100)
@@ -512,7 +512,7 @@ func displayFinalResults() {
 
 	attackSuccessRate := float64(attackSuccessCount) / float64(len(attackSuccessRates)) * 100
 
-	fmt.Printf("\n📊 METRICS SUMMARY:\n")
+	fmt.Printf("\nMETRICS SUMMARY:\n")
 	fmt.Printf("   - Average Reachability: %.1f%%\n", avgReachability*100)
 	fmt.Printf("   - Average Latency: %.0f ms\n", avgLatency)
 	fmt.Printf("   - Average Message Overhead: %.0f messages\n", avgOverhead)
@@ -520,7 +520,7 @@ func displayFinalResults() {
 
 	// Determine overall test result
 	if avgReachability < 1.0 {
-		fmt.Printf("\n🚨 OVERALL RESULT: DEFENSE FAILURE\n")
+		fmt.Printf("\nOVERALL RESULT: DEFENSE FAILURE\n")
 		fmt.Printf("   - Reachability below 100%% indicates message censorship\n")
 		fmt.Printf("   - Attack was successful in %.1f%% of runs\n", attackSuccessRate)
 	} else {

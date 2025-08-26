@@ -31,7 +31,7 @@ func RunGossipTestControlVM1() {
 	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), false, roomID)
 	peerDetails.AddPeer(publicKey4_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey4_VM4), false, roomID)
 
-	fmt.Printf("🚀 VM1: Initializing Gossip Test Control (Old Network)\n")
+	fmt.Printf("VM1: Initializing Gossip Test Control (Old Network)\n")
 	fmt.Printf("   Room ID: %s\n", roomID)
 	fmt.Printf("   Using old network.InitializeNetwork\n")
 
@@ -45,12 +45,12 @@ func RunGossipTestControlVM1() {
 	testMessage := "Official group chat message!"
 	err := network.SendMessage(testMessage, roomID, 3000, "chat")
 	if err != nil {
-		fmt.Printf("❌ Error sending limited message: %v\n", err)
+		fmt.Printf("Error sending limited message: %v\n", err)
 	} else {
-		fmt.Printf("✅ Sent limited message to 2 nodes: %s\n", testMessage)
+		fmt.Printf("Sent limited message to 2 nodes: %s\n", testMessage)
 	}
 
-	fmt.Println("✅ VM1: Gossip Test Control (Old Network) initialized successfully")
+	fmt.Println("VM1: Gossip Test Control (Old Network) initialized successfully")
 }
 
 // N = 4
@@ -71,7 +71,7 @@ func RunGossipTestCaseVM1() {
 	disableAckSending := false
 	forwardingFanout := 3
 
-	fmt.Printf("🚀 VM1: Initializing Gossip Test Case 1 (New Gossip Network)\n")
+	fmt.Printf("VM1: Initializing Gossip Test Case 1 (New Gossip Network)\n")
 	fmt.Printf("   Room ID: %s\n", roomID)
 	fmt.Printf("   Port: %d\n", port)
 	fmt.Printf("   Blockchain: %t\n", toggleBlockchain)
@@ -84,31 +84,31 @@ func RunGossipTestCaseVM1() {
 	var err error
 	gossipNet, err = gossipnetwork.InitializeGossipNetwork(roomID, port, toggleAttacker, toggleBlockchain, noAckBlockchainSave, injectSpam, disableAckSending, forwardingFanout)
 	if err != nil {
-		fmt.Printf("❌ Error initializing gossip network: %v\n", err)
+		fmt.Printf("Error initializing gossip network: %v\n", err)
 		return
 	}
 
 	// Start command listener in a goroutine
 	go startCommandListener()
 
-	fmt.Println("✅ VM1: Gossip Test Case 1 (New Gossip Network) initialized successfully")
+	fmt.Println("VM1: Gossip Test Case 1 (New Gossip Network) initialized successfully")
 }
 
 // startCommandListener listens for commands from the stat collector
 func startCommandListener() {
 	listener, err := net.Listen("tcp", "localhost:3001")
 	if err != nil {
-		fmt.Printf("❌ Error starting command listener: %v\n", err)
+		fmt.Printf("Error starting command listener: %v\n", err)
 		return
 	}
 	defer listener.Close()
 
-	fmt.Println("🎧 VM1: Command listener started on localhost:3001")
+	fmt.Println("VM1: Command listener started on localhost:3001")
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Printf("❌ Error accepting connection: %v\n", err)
+			fmt.Printf("Error accepting connection: %v\n", err)
 			continue
 		}
 
@@ -123,12 +123,12 @@ func handleCommandConnection(conn net.Conn) {
 	buffer := make([]byte, 1024)
 	n, err := conn.Read(buffer)
 	if err != nil {
-		fmt.Printf("❌ Error reading command: %v\n", err)
+		fmt.Printf("Error reading command: %v\n", err)
 		return
 	}
 
 	command := strings.TrimSpace(string(buffer[:n]))
-	fmt.Printf("📨 VM1: Received command: %s\n", command)
+	fmt.Printf("VM1: Received command: %s\n", command)
 
 	if strings.HasPrefix(command, "SEND_LIMITED_MESSAGE:") {
 		parts := strings.Split(command, ":")
@@ -136,17 +136,17 @@ func handleCommandConnection(conn net.Conn) {
 			maxNodesStr := parts[1]
 			maxNodes, err := strconv.Atoi(maxNodesStr)
 			if err != nil {
-				fmt.Printf("❌ Error parsing maxNodes: %v\n", err)
+				fmt.Printf("Error parsing maxNodes: %v\n", err)
 				return
 			}
 
-			fmt.Printf("🚀 VM1: Sending limited message to %d nodes\n", maxNodes)
+			fmt.Printf("VM1: Sending limited message to %d nodes\n", maxNodes)
 			testMessage := "Official group chat message!"
 			err = network.SendMessageToLimitedNodes(testMessage, roomID, 3000, "chat", maxNodes)
 			if err != nil {
-				fmt.Printf("❌ Error sending limited message: %v\n", err)
+				fmt.Printf("Error sending limited message: %v\n", err)
 			} else {
-				fmt.Printf("✅ VM1: Sent limited message to %d nodes: %s\n", maxNodes, testMessage)
+				fmt.Printf("VM1: Sent limited message to %d nodes: %s\n", maxNodes, testMessage)
 			}
 		}
 	} else if strings.HasPrefix(command, "SEND_GOSSIP_MESSAGE:") {
@@ -157,14 +157,14 @@ func handleCommandConnection(conn net.Conn) {
 				message = "Official group chat message!"
 			}
 
-			fmt.Printf("🚀 VM1: Sending gossip message: %s\n", message)
+			fmt.Printf("VM1: Sending gossip message: %s\n", message)
 
 			// Send the gossip message using the global gossip network instance
 			if gossipNet != nil {
 				gossipNet.GossipMessage("chat", "broadcast", message, 0, roomID, "")
-				fmt.Printf("📤 VM1: Gossip message sent: %s\n", message)
+				fmt.Printf("VM1: Gossip message sent: %s\n", message)
 			} else {
-				fmt.Printf("❌ Error: Gossip network not initialized\n")
+				fmt.Printf("Error: Gossip network not initialized\n")
 			}
 		}
 	}
