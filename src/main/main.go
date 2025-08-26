@@ -1,9 +1,9 @@
 package main
 
 import (
-	"blockchain-p2p-messenger/src/consensus"
-	gossip_test_VM1 "blockchain-p2p-messenger/src/simulations/gossip_tests/VM1"
-	"encoding/gob"
+	"blockchain-p2p-messenger/src/derivationFunctions"
+	"blockchain-p2p-messenger/src/peerDetails"
+	digitalsignatureforgerytests "blockchain-p2p-messenger/src/simulations/Digital_Signature_Forgery_Tests"
 )
 
 //"blockchain-p2p-messenger/src/genkeys"
@@ -13,24 +13,23 @@ import (
 // "blockchain-p2p-messenger/src/simulations/consensus_tests"
 // "crypto/ed25519"
 // "fmt"
-func init() {
-	gob.Register(&consensus.Transaction{})
-}
+
+
 func main() {
 
 	// consensustests.RunTest1()
 	// network.StartYggdrasilServer()
 	
-	// publicKey_VM1 := "0000040cd8e7f870ff1146e03589b988d82aedb6464c5085a9aba945e60c4fcd"
-	// publicKey2_VM2 := "927c78b7fa731c2b2f642a1de2fb3318f70bbb142465a75a8802a90e1a526285"
-	// publicKey3_VM3 := "9356e1f92f5adff2ab05115d54aff4b8c756d604704b5ddd71ff320f2d5aeecb"
+	publicKey_VM1 := "0000040cd8e7f870ff1146e03589b988d82aedb6464c5085a9aba945e60c4fcd"
+	publicKey2_VM2 := "927c78b7fa731c2b2f642a1de2fb3318f70bbb142465a75a8802a90e1a526285"
+	publicKey3_VM3 := "9356e1f92f5adff2ab05115d54aff4b8c756d604704b5ddd71ff320f2d5aeecb"
 	// PublicKey_VM4 := "0000005ed266dc58d687b6ed84af4b4657162033cf379e9d8299bba941ae66e0"
-	// isAdmin := false
-	// roomID := "room-xyz-987" // mock room IDd
+	isAdmin := false
+	roomID := "room-xyz-987" // mock room IDd
 
-	// peerDetails.AddPeer(publicKey_VM1, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey_VM1), isAdmin, roomID)
-	// peerDetails.AddPeer(publicKey2_VM2, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey2_VM2), isAdmin, roomID)
-	// peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), isAdmin, roomID)
+	peerDetails.AddPeer(publicKey_VM1, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey_VM1), isAdmin, roomID)
+	peerDetails.AddPeer(publicKey2_VM2, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey2_VM2), isAdmin, roomID)
+	peerDetails.AddPeer(publicKey3_VM3, derivationFunctions.DeriveIPAddressFromPublicKey(publicKey3_VM3), isAdmin, roomID)
 	// peerDetails.AddPeer(PublicKey_VM4, derivationFunctions.DeriveIPAddressFromPublicKey(PublicKey_VM4), isAdmin, roomID)
 
 	// // peerDetails.RemovePeer(publicKey, roomID)
@@ -80,11 +79,11 @@ func main() {
 
 	
 
-	// consensustestsVM1.RunConsensusTestCase1VM1()
-	gossip_test_VM1.RunGossipTestCaseVM1()
+	// consensustestsVM1.RunConsensusTestControlVM1()
+	// gossip_test_VM1.RunGossipTestControlVM1()
 
-
-	
+	digitalsignatureforgerytests.DigitalSignatureForgeryTest("room-xyz-987", 3000, true)
+	digitalsignatureforgerytests.RunDigitalSignatureForgeryTest500(roomID, 3000)
 
 
 

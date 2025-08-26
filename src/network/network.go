@@ -278,6 +278,10 @@ func handleConnection(conn net.Conn) {
 
 			log.Printf("Authenticated!")
 
+			// Send "Authenticated" response back to the client
+			responseMessage := "Authenticated"
+			conn.Write([]byte(responseMessage))
+
 			fmt.Println(message.Message)
 			switch message.Type {
 			case "chat":
