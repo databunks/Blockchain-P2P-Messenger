@@ -64,7 +64,7 @@ func main() {
 	// Wait for all runs to complete
 	waitForTestCompletion()
 
-	fmt.Println("=== CONSENSUS TEST COMPLETED ===")
+	fmt.Println("CONSENSUS TEST COMPLETED")
 	fmt.Printf("Total Runs: %d\n", currentRun)
 	fmt.Printf("Reachability Count: %d\n", reachabilityCount)
 	if len(timestamp_arrived) > 0 {
@@ -103,7 +103,7 @@ func initializeConsensusTest() {
 	totalLatencies = make([]int64, 0)
 	runCompletionTimes = make([]time.Time, 0)
 
-	fmt.Println("=== CONSENSUS TEST INITIALIZATION ===")
+	fmt.Println("CONSENSUS TEST INITIALIZATION")
 	fmt.Printf("Total Nodes: 4 (2 Honest + 2 Sybil)\n")
 	fmt.Printf("Honest Nodes: %d\n", len(honestNodes))
 	for i, key := range honestNodes {
@@ -149,7 +149,7 @@ func startNewRun() {
 	}
 	fmt.Printf("Run isolation verified - clean slate for run %d\n", currentRun)
 
-	fmt.Printf("\n=== STARTING RUN %d/%d ===\n", currentRun, totalRuns)
+	fmt.Printf("\nSTARTING RUN %d/%d\n", currentRun, totalRuns)
 	fmt.Printf("Expected: %d blockchains (Mode: %s)\n", expectedBlockchains, consensusMode)
 	fmt.Println("Sending start gossiping command to VM1...")
 
@@ -762,29 +762,21 @@ func handleBlockchainMessage(blockchainMsg map[string]interface{}) {
 	}
 
 	// Enhanced logging for blockchain reception (commented out for cleaner output)
-	// fmt.Printf("\n🔗 BLOCKCHAIN RECEIVED [Run %d] 🔗\n", currentRun)
-	// fmt.Printf("📅 Time: %s\n", time.Now().Format("15:04:05.000"))
-	// fmt.Printf("🏠 Room: %s\n", roomID)
-	// fmt.Printf("⏰ Timestamp: %v\n", timestamp)
 
 	// Log blockchain content summary (commented out for cleaner output)
 	// if dataStr, ok := data.(string); ok {
 	// 	// Count the number of blocks in the blockchain
 	// 	blockCount := strings.Count(dataStr, "CHAT_MSG{")
-	// 	fmt.Printf("📊 Blockchain Blocks: %d\n", blockCount)
 
 	// 	// Show first and last few characters of blockchain data
 	// 	if len(dataStr) > 100 {
-	// 	// 	fmt.Printf("📄 Data Preview: %s...%s\n", dataStr[:50], dataStr[len(dataStr)-50:])
+	//
 	// 	// } else {
-	// 	// 	fmt.Printf("📄 Data: %s\n", dataStr)
+	//
 	// 	// }
 	// }
 
 	// Log progress towards run completion (commented out for cleaner output)
-	// fmt.Printf("📈 Progress: %d/12 blockchains received\n", messagesThisRun+1)
-	// fmt.Printf("⏱️  Run Time: %s\n", time.Since(runStartTime).Round(time.Millisecond))
-	// fmt.Println("🔗 END BLOCKCHAIN DATA 🔗")
 
 	// Check for spam messages and log them
 	if dataStr, ok := data.(string); ok {
@@ -824,17 +816,17 @@ func storeBlockchainForConsensus(blockchainMsg map[string]interface{}) {
 	// Try to extract sender information (most reliable)
 	if sender, exists := blockchainMsg["sender"]; exists {
 		nodeID = fmt.Sprintf("%v", sender)
-		fmt.Printf("💾 Using sender field: %s...\n", nodeID[:16])
+		fmt.Printf("Using sender field: %s...\n", nodeID[:16])
 	} else if publicKey, exists := blockchainMsg["public_key"]; exists {
 		// Use public key as fallback identifier
 		pubKeyStr := fmt.Sprintf("%v", publicKey)
 		nodeID = pubKeyStr
-		fmt.Printf("💾 Using public_key field: %s...\n", nodeID[:16])
+		fmt.Printf("Using public_key field: %s...\n", nodeID[:16])
 	} else {
 		// If no sender info, use a fallback identifier
 		// This should rarely happen if the network is working correctly
 		nodeID = fmt.Sprintf("unknown_node_%d", time.Now().UnixNano())
-		fmt.Printf("💾 Using fallback ID (no sender info): %s\n", nodeID)
+		fmt.Printf("Using fallback ID (no sender info): %s\n", nodeID)
 	}
 
 	// Store blockchain data for this node
@@ -858,7 +850,6 @@ func storeBlockchainForConsensus(blockchainMsg map[string]interface{}) {
 		fmt.Printf("Consensus started at: %s (first blockchain received)\n", consensusStartTime.Format("15:04:05.000"))
 	}
 
-	// fmt.Printf("💾 Stored blockchain for node %s (total: %d)\n", nodeID, len(nodeBlockchains[nodeID]))
 }
 
 // sendStartGossipingCommand sends a command to VM1 to start gossiping messages
@@ -866,7 +857,7 @@ func sendStartGossipingCommand() {
 	// VM1's address (command listener on port 3001)
 	vm1Address := "localhost:3001"
 
-	fmt.Printf("📡 Sending start gossiping command to VM1 at %s...\n", vm1Address)
+	fmt.Printf("Sending start gossiping command to VM1 at %s...\n", vm1Address)
 
 	// Connect to VM1
 	conn, err := net.Dial("tcp", vm1Address)
@@ -1091,7 +1082,7 @@ func SendMessage(messageContent string, roomID string, port uint64) error {
 
 // displayFinalResults shows the overall consensus testing results
 func displayFinalResults() {
-	fmt.Println("\n=== FINAL CONSENSUS RESULTS ===")
+	fmt.Println("\nFINAL CONSENSUS RESULTS")
 
 	// Calculate average consensus integrity
 	var avgIntegrity float64
@@ -1130,7 +1121,7 @@ func displayFinalResults() {
 	fmt.Printf("Average Latency: %d ms\n", avgLatency)
 
 	// Display run-by-run breakdown
-	fmt.Println("\n=== RUN BREAKDOWN ===")
+	fmt.Println("\nRUN BREAKDOWN")
 	for i := 0; i < len(consensusIntegrityResults); i++ {
 		// Convert boolean to string for display
 		attackStatus := "FAILED"

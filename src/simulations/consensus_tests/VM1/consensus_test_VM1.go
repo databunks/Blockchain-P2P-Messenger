@@ -265,11 +265,11 @@ func clearBlockchain() error {
 	// Preserve blocks from index 0 to lastPeerIndex (genesis + all peers)
 	if lastPeerIndex >= 0 {
 		preservedBlocks = blockchain[:lastPeerIndex+1]
-		fmt.Printf("VM1: 💾 Preserving %d blocks (genesis + peers up to index %d)\n", len(preservedBlocks), lastPeerIndex)
+		fmt.Printf("VM1: Preserving %d blocks (genesis + peers up to index %d)\n", len(preservedBlocks), lastPeerIndex)
 	} else {
 		// If no peer blocks found, just keep genesis
 		preservedBlocks = blockchain[:1]
-		fmt.Printf("VM1: 💾 Preserving %d blocks (genesis only)\n", len(preservedBlocks))
+		fmt.Printf("VM1: Preserving %d blocks (genesis only)\n", len(preservedBlocks))
 	}
 
 	// Write back the preserved blocks
